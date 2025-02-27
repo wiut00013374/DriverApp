@@ -14,7 +14,7 @@ import com.example.driverapp.OrderDetailActivity
 import com.example.driverapp.R
 
 /**
- * Utility class to handle different types of notifications
+ * Utility class for handling different types of notifications
  */
 class NotificationUtils(private val context: Context) {
 
@@ -27,7 +27,7 @@ class NotificationUtils(private val context: Context) {
     /**
      * Show a basic notification
      */
-    fun showBasicNotification(title: String, message: String, notificationId: Int) {
+    fun showBasicNotification(title: String, message: String, notificationId: Int = System.currentTimeMillis().toInt()) {
         // Create intent for when user taps notification
         val intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)

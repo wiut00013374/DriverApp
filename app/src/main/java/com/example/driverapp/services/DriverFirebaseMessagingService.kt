@@ -1,6 +1,7 @@
 package com.example.driverapp.services
 
 import android.util.Log
+import com.example.driverapp.data.Order
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -55,12 +56,31 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
                 }
 
                 // Process the order request notification
-                // In DriverFirebaseMessagingService:
-                OrderNotificationHandler.processOrderNotification(applicationContext, orderId)
-
+                processOrderRequest(orderId)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking driver availability: ${e.message}")
+            }
+        }
+    }
+
+    private fun processOrderRequest(orderId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Get the order details
+                val orderDoc = firestore.collection("orders").document(orderId).get().await()
+                val order = orderDoc.toObject(Order::class.java)?.apply {
+                    id = orderId
+                }
+
+                if (order != null) {
+                    // Show notification with the order details
+                    CoroutineScope(Dispatchers.Main).launch {
+                        OrderNotificationHandler.showOrderRequestNotification(applicationContext, order)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing order request: ${e.message}")
             }
         }
     }
@@ -79,7 +99,7 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
             else -> "Order status has been updated to $status"
         }
 
-        showBasicNotification(title, message, orderId.hashCode())
+        NotificationUtils(applicationContext).showBasicNotification(title, message, orderId.hashCode())
     }
 
     private fun handleChatMessage(data: Map<String, String>) {
@@ -105,13 +125,13 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
 
                 // Show chat notification
                 val title = "Message from $senderName"
-                showChatNotification(chatId, title, messageText)
+                NotificationUtils(applicationContext).showChatNotification(chatId, title, messageText)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling chat message: ${e.message}")
 
                 // Fallback to generic notification if sender info fails
-                showChatNotification(chatId, "New Message", messageText)
+                NotificationUtils(applicationContext).showChatNotification(chatId, "New Message", messageText)
             }
         }
     }
@@ -123,18 +143,8 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
             val title = notification.title ?: "New Notification"
             val body = notification.body ?: "You have a new notification"
 
-            showBasicNotification(title, body, System.currentTimeMillis().toInt())
+            NotificationUtils(applicationContext).showBasicNotification(title, body, System.currentTimeMillis().toInt())
         }
-    }
-
-    private fun showBasicNotification(title: String, message: String, notificationId: Int) {
-        val notificationUtils = NotificationUtils(applicationContext)
-        notificationUtils.showBasicNotification(title, message, notificationId)
-    }
-
-    private fun showChatNotification(chatId: String, title: String, message: String) {
-        val notificationUtils = NotificationUtils(applicationContext)
-        notificationUtils.showChatNotification(chatId, title, message)
     }
 
     override fun onNewToken(token: String) {
@@ -150,26 +160,23 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Try updating in both collections to ensure we cover all bases
+                // Update in users collection
+                firestore.collection("users").document(user.uid)
+                    .update("fcmToken", token)
+                    .await()
+                Log.d(TAG, "FCM Token updated in users collection")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update token in users collection: ${e.message}")
+
+                // If update fails, try to use set with merge option
                 try {
                     firestore.collection("users").document(user.uid)
-                        .update("fcmToken", token)
+                        .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
                         .await()
-                    Log.d(TAG, "FCM Token updated in users collection")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update token in users collection: ${e.message}")
+                    Log.d(TAG, "FCM Token set in users collection using merge")
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to set token in users collection: ${e2.message}")
                 }
-
-                try {
-                    firestore.collection("drivers").document(user.uid)
-                        .update("fcmToken", token)
-                        .await()
-                    Log.d(TAG, "FCM Token updated in drivers collection")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update token in drivers collection: ${e.message}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error updating FCM token: ${e.message}")
             }
         }
     }
