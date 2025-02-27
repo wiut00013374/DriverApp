@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import com.example.driverapp.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.messaging.FirebaseMessaging
 
 /**
@@ -45,7 +46,7 @@ object DriverAvailabilityManager {
         )
 
         // Try updating the driver document first
-        firestore.collection("drivers").document(currentUserId)
+        firestore.collection("users").document(currentUserId)
             .update(availabilityData as Map<String, Any>)
             .addOnSuccessListener {
                 Log.d(TAG, "Driver availability updated successfully: $isAvailable")
@@ -61,13 +62,30 @@ object DriverAvailabilityManager {
                 callback(true)
             }
             .addOnFailureListener { e ->
-                // If that fails, try updating the user document
-                Log.d(TAG, "No driver document found, trying users collection")
+                // If that fails, try creating the document
+                Log.d(TAG, "No driver document found, creating one")
 
+                // Add more driver details
+                val driverData = hashMapOf<String, Any>(
+                    "uid" to currentUserId,
+                    "userType" to "driver",
+                    "available" to isAvailable,
+                    "lastStatusUpdate" to System.currentTimeMillis(),
+                    "createdAt" to System.currentTimeMillis()
+                )
+
+                // Get user's display name and email if available
+                val user = auth.currentUser
+                if (user != null) {
+                    driverData["email"] = user.email ?: ""
+                    driverData["displayName"] = user.displayName ?: ""
+                }
+
+                // Create the document
                 firestore.collection("users").document(currentUserId)
-                    .update(availabilityData as Map<String, Any>)
+                    .set(driverData)
                     .addOnSuccessListener {
-                        Log.d(TAG, "User availability updated successfully: $isAvailable")
+                        Log.d(TAG, "Driver document created successfully")
 
                         // Start or stop location service based on availability
                         handleLocationService(context, isAvailable)
@@ -80,7 +98,7 @@ object DriverAvailabilityManager {
                         callback(true)
                     }
                     .addOnFailureListener { e2 ->
-                        Log.e(TAG, "Error updating availability: ${e2.message}")
+                        Log.e(TAG, "Error creating driver document: ${e2.message}")
                         callback(false)
                     }
             }
@@ -105,6 +123,35 @@ object DriverAvailabilityManager {
             context.stopService(serviceIntent)
             Log.d(TAG, "Location service stopped")
         }
+    }
+
+    /**
+     * Update location data for the driver
+     */
+    fun updateDriverLocation(latitude: Double, longitude: Double, callback: (Boolean) -> Unit) {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) {
+            callback(false)
+            return
+        }
+
+        // Create location data
+        val locationData = hashMapOf<String, Any>(
+            "location" to GeoPoint(latitude, longitude),
+            "lastLocationUpdate" to System.currentTimeMillis()
+        )
+
+        // Update in Firestore
+        firestore.collection("users").document(currentUserId)
+            .update(locationData)
+            .addOnSuccessListener {
+                Log.d(TAG, "Driver location updated successfully")
+                callback(true)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error updating driver location: ${e.message}")
+                callback(false)
+            }
     }
 
     /**
@@ -150,26 +197,11 @@ object DriverAvailabilityManager {
             return
         }
 
-        // Check driver collection first
-        firestore.collection("drivers").document(currentUserId)
+        firestore.collection("users").document(currentUserId)
             .get()
             .addOnSuccessListener { document ->
-                if (document != null && document.exists()) {
-                    val isAvailable = document.getBoolean("available") ?: false
-                    callback(isAvailable)
-                } else {
-                    // If not found, check users collection
-                    firestore.collection("users").document(currentUserId)
-                        .get()
-                        .addOnSuccessListener { userDoc ->
-                            val isAvailable = userDoc.getBoolean("available") ?: false
-                            callback(isAvailable)
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Error checking user availability: ${e.message}")
-                            callback(false)
-                        }
-                }
+                val isAvailable = document.getBoolean("available") ?: false
+                callback(isAvailable)
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Error checking driver availability: ${e.message}")

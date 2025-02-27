@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.example.driverapp.OrderDetailActivity
 import com.example.driverapp.R
 import com.example.driverapp.data.Order
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,7 @@ object OrderNotificationHandler {
     private const val NOTIFICATION_ID_PREFIX = 1000 // Offset for order notification IDs
 
     private val firestore = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
     /**
      * Process an incoming order notification
@@ -150,7 +152,6 @@ object OrderNotificationHandler {
      */
     private fun cacheOrderLocally(context: Context, order: Order) {
         // Use SharedPreferences for simple caching
-        // For more complex needs, consider Room database
         val sharedPrefs = context.getSharedPreferences("order_cache", Context.MODE_PRIVATE)
 
         with(sharedPrefs.edit()) {
@@ -179,11 +180,49 @@ object OrderNotificationHandler {
      */
     suspend fun acceptOrder(orderId: String): Boolean {
         return try {
-            // Call into Firebase Cloud Function to accept the order
-            acceptOrderViaFirestore(orderId)
+            // Get current driver ID
+            val currentUserId = auth.currentUser?.uid ?: return false
+
+            // First check if the order is still available
+            val orderDoc = firestore.collection("orders").document(orderId).get().await()
+
+            // If order already has a driver, it's too late
+            if (orderDoc.getString("driverUid") != null) {
+                Log.w(TAG, "Order $orderId already has a driver assigned")
+                return false
+            }
+
+            // Get the drivers contact list
+            @Suppress("UNCHECKED_CAST")
+            val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
+
+            if (driversContactList == null || !driversContactList.containsKey(currentUserId)) {
+                Log.e(TAG, "Driver not in contact list for order $orderId")
+                return false
+            }
+
+            // Update the order with this driver and change status
+            val updates = hashMapOf<String, Any>(
+                "driverUid" to currentUserId,
+                "status" to "Accepted",
+                "acceptedAt" to System.currentTimeMillis()
+            )
+
+            // Also update the driver's status in the contact list
+            val updatedList = driversContactList.toMutableMap()
+            updatedList[currentUserId] = "accepted"
+            updates["driversContactList"] = updatedList
+
+            // Update the order
+            firestore.collection("orders").document(orderId)
+                .update(updates)
+                .await()
+
+            Log.d(TAG, "Order $orderId accepted by driver $currentUserId")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Error accepting order: ${e.message}")
-            false
+            return false
         }
     }
 
@@ -192,92 +231,40 @@ object OrderNotificationHandler {
      */
     suspend fun rejectOrder(orderId: String): Boolean {
         return try {
-            // Call into Firebase Cloud Function to reject the order
-            rejectOrderViaFirestore(orderId)
+            // Get current driver ID
+            val currentUserId = auth.currentUser?.uid ?: return false
+
+            // Get the order data
+            val orderDoc = firestore.collection("orders").document(orderId).get().await()
+
+            // Get the drivers contact list
+            @Suppress("UNCHECKED_CAST")
+            val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
+                ?: return false
+
+            // Update the driver's status in the contact list
+            val updatedList = driversContactList.toMutableMap()
+            updatedList[currentUserId] = "rejected"
+
+            // Get the current index
+            val currentIndex = orderDoc.getLong("currentDriverIndex")?.toInt() ?: 0
+
+            // Update the order with the rejected status and increment the index
+            firestore.collection("orders").document(orderId)
+                .update(
+                    mapOf(
+                        "driversContactList" to updatedList,
+                        "currentDriverIndex" to currentIndex + 1
+                    )
+                )
+                .await()
+
+            Log.d(TAG, "Order $orderId rejected by driver $currentUserId")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Error rejecting order: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * Accept an order by updating the Firestore document directly
-     */
-    private suspend fun acceptOrderViaFirestore(orderId: String): Boolean {
-        // First check if the order is still available
-        val orderDoc = firestore.collection("orders").document(orderId).get().await()
-
-        // If order already has a driver, it's too late
-        if (orderDoc.getString("driverUid") != null) {
-            Log.w(TAG, "Order $orderId already has a driver assigned")
             return false
         }
-
-        // Get the current user ID
-        val currentUserId = FirebaseAuthWrapper.getCurrentUserId() ?: return false
-
-        // Get the drivers contact list
-        val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
-
-        if (driversContactList == null || !driversContactList.containsKey(currentUserId)) {
-            Log.e(TAG, "Driver not in contact list for order $orderId")
-            return false
-        }
-
-        // Update the order with this driver and change status
-        val updates = hashMapOf<String, Any>(
-            "driverUid" to currentUserId,
-            "status" to "Accepted",
-            "acceptedAt" to System.currentTimeMillis()
-        )
-
-        // Also update the driver's status in the contact list
-        val updatedList = driversContactList.toMutableMap()
-        updatedList[currentUserId] = "accepted"
-        updates["driversContactList"] = updatedList
-
-        // Update the order
-        firestore.collection("orders").document(orderId)
-            .update(updates)
-            .await()
-
-        Log.d(TAG, "Order $orderId accepted by driver $currentUserId")
-        return true
-    }
-
-    /**
-     * Reject an order by updating the Firestore document directly
-     */
-    private suspend fun rejectOrderViaFirestore(orderId: String): Boolean {
-        // Get the current user ID
-        val currentUserId = FirebaseAuthWrapper.getCurrentUserId() ?: return false
-
-        // Get the order data
-        val orderDoc = firestore.collection("orders").document(orderId).get().await()
-
-        // Get the drivers contact list
-        val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
-            ?: return false
-
-        // Update the driver's status in the contact list
-        val updatedList = driversContactList.toMutableMap()
-        updatedList[currentUserId] = "rejected"
-
-        // Get the current index
-        val currentIndex = orderDoc.getLong("currentDriverIndex")?.toInt() ?: 0
-
-        // Update the order with the rejected status and increment the index
-        firestore.collection("orders").document(orderId)
-            .update(
-                mapOf(
-                    "driversContactList" to updatedList,
-                    "currentDriverIndex" to currentIndex + 1
-                )
-            )
-            .await()
-
-        Log.d(TAG, "Order $orderId rejected by driver $currentUserId")
-        return true
     }
 
     /**
@@ -287,14 +274,5 @@ object OrderNotificationHandler {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val notificationId = NOTIFICATION_ID_PREFIX + orderId.hashCode()
         notificationManager.cancel(notificationId)
-    }
-
-    /**
-     * Helper object to access Firebase Auth
-     */
-    private object FirebaseAuthWrapper {
-        fun getCurrentUserId(): String? {
-            return com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-        }
     }
 }
