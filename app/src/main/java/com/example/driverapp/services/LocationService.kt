@@ -14,10 +14,10 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.driverapp.R
 import com.google.android.gms.location.*
-import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
+import com.google.firebase.firestore.SetOptions
 
 /**
  * Background service that tracks driver location and updates it in Firestore
@@ -69,37 +69,81 @@ class LocationService : Service() {
         } catch (e: SecurityException) {
             Log.e(TAG, "Error requesting location updates: ${e.message}")
         }
+
+        // Also update driver status to available
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId != null) {
+            val driverUpdate = mapOf(
+                "available" to true,
+                "lastOnline" to System.currentTimeMillis()
+            )
+
+            // Update in both collections to ensure consistency
+            firestore.collection("users").document(currentUserId)
+                .update(driverUpdate)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Driver set to available in users collection")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update availability in users: ${e.message}")
+                }
+
+            firestore.collection("drivers").document(currentUserId)
+                .update(driverUpdate)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Driver set to available in drivers collection")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update availability in drivers: ${e.message}")
+                }
+        }
     }
 
     private fun updateDriverLocation(location: Location) {
         val currentUserId = auth.currentUser?.uid ?: return
 
-        // Create a GeoPoint for Firestore (it supports geospatial queries)
+        // Create location data
         val geoPoint = GeoPoint(location.latitude, location.longitude)
-
-        // Update the driver's location in Firestore
         val locationData = hashMapOf(
             "location" to geoPoint,
-            "lastUpdated" to System.currentTimeMillis(),
+            "lastLocationUpdate" to System.currentTimeMillis(),
             "heading" to location.bearing,
             "speed" to location.speed
         )
 
-        // First check if there's a driver document
+        // First try the users collection (this is what the customer app checks)
+        firestore.collection("users").document(currentUserId)
+            .update(locationData as Map<String, Any>)
+            .addOnSuccessListener {
+                Log.d(TAG, "Driver location updated successfully in users collection")
+            }
+            .addOnFailureListener { e ->
+                // If this fails, try to set with merge option
+                firestore.collection("users").document(currentUserId)
+                    .set(locationData, SetOptions.merge())
+                    .addOnSuccessListener {
+                        Log.d(TAG, "Driver location set successfully in users collection")
+                    }
+                    .addOnFailureListener { e2 ->
+                        Log.e(TAG, "Error setting location in users: ${e2.message}")
+                    }
+            }
+
+        // Also update in drivers collection for compatibility
         firestore.collection("drivers").document(currentUserId)
             .update(locationData as Map<String, Any>)
             .addOnSuccessListener {
-                Log.d(TAG, "Driver location updated successfully")
+                Log.d(TAG, "Driver location updated successfully in drivers collection")
             }
             .addOnFailureListener { e ->
-                // If driver document doesn't exist, try users collection instead
-                firestore.collection("users").document(currentUserId)
-                    .update(locationData as Map<String, Any>)
+                // If this fails, try to set with merge option
+                firestore.collection("drivers").document(currentUserId)
+                    .set(locationData, SetOptions.merge())
                     .addOnSuccessListener {
-                        Log.d(TAG, "User location updated successfully")
+                        Log.d(TAG, "Driver location set successfully in drivers collection")
                     }
                     .addOnFailureListener { e2 ->
-                        Log.e(TAG, "Error updating location: ${e2.message}")
+                        Log.e(TAG, "Error setting location in drivers: ${e2.message}")
                     }
             }
     }
@@ -119,7 +163,7 @@ class LocationService : Service() {
         // Build the notification
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Driver Location Service")
-            .setContentText("Tracking your location for nearby orders")
+            .setContentText("You are available for orders. Your location is being shared.")
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -138,6 +182,34 @@ class LocationService : Service() {
         super.onDestroy()
         // Stop location updates
         fusedLocationClient.removeLocationUpdates(locationCallback)
+
+        // Set driver to unavailable when service is destroyed
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId != null) {
+            val driverUpdate = mapOf(
+                "available" to false,
+                "lastOnline" to System.currentTimeMillis()
+            )
+
+            // Update in both collections
+            firestore.collection("users").document(currentUserId)
+                .update(driverUpdate)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Driver set to unavailable in users collection")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update availability in users: ${e.message}")
+                }
+
+            firestore.collection("drivers").document(currentUserId)
+                .update(driverUpdate)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Driver set to unavailable in drivers collection")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Failed to update availability in drivers: ${e.message}")
+                }
+        }
     }
 
     companion object {

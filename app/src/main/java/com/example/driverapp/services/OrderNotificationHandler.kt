@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 
 /**
  * Handles order notifications for drivers and provides methods to accept/reject orders
@@ -37,6 +36,36 @@ object OrderNotificationHandler {
     fun processOrderNotification(context: Context, orderId: String, showNotification: Boolean = true) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Check if driver is still available
+                val currentUserId = auth.currentUser?.uid
+                if (currentUserId == null) {
+                    Log.e(TAG, "No authenticated user")
+                    return@launch
+                }
+
+                val driverDoc = firestore.collection("users").document(currentUserId).get().await()
+                val isAvailable = driverDoc.getBoolean("available") ?: false
+
+                if (!isAvailable) {
+                    Log.d(TAG, "Driver is not available, skipping notification")
+
+                    // Update order's driver contact list to indicate unavailability
+                    val orderDoc = firestore.collection("orders").document(orderId).get().await()
+                    @Suppress("UNCHECKED_CAST")
+                    val driversContactList = orderDoc.get("driversContactList") as? MutableMap<String, String>
+
+                    if (driversContactList != null && driversContactList.containsKey(currentUserId)) {
+                        driversContactList[currentUserId] = "unavailable"
+
+                        // Update the order
+                        firestore.collection("orders").document(orderId)
+                            .update("driversContactList", driversContactList)
+                            .await()
+                    }
+
+                    return@launch
+                }
+
                 // Get the order details
                 val orderDoc = firestore.collection("orders").document(orderId).get().await()
                 val order = orderDoc.toObject(Order::class.java)?.apply {
@@ -53,7 +82,7 @@ object OrderNotificationHandler {
 
                 // Show notification if requested
                 if (showNotification) {
-                    withContext(Dispatchers.Main) {
+                    CoroutineScope(Dispatchers.Main).launch {
                         showOrderRequestNotification(context, order)
                     }
                 }

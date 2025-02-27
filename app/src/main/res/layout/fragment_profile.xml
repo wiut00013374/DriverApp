@@ -60,6 +60,50 @@
             android:text="Status"
             android:layout_marginTop="8dp" />
 
+        <!-- Availability Switch Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="16dp"
+            android:background="#F0F0F0"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Availability for Orders"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/tvAvailabilityStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="You are not available for orders" />
+
+                <Switch
+                    android:id="@+id/switchAvailability"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="When available, your location will be shared with potential customers"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp"
+                android:textColor="#757575" />
+        </LinearLayout>
+
         <!-- Add other fields as necessary -->
 
     </LinearLayout>

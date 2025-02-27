@@ -1,20 +1,28 @@
 package com.example.driverapp.fragment
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.driverapp.R
 import com.example.driverapp.data.Driver
 import com.example.driverapp.login.DriverSignInActivity
+import com.example.driverapp.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 class ProfileFragment : Fragment() {
 
@@ -30,6 +38,8 @@ class ProfileFragment : Fragment() {
     private lateinit var tvLicensePlate: TextView
     private lateinit var tvStatus: TextView
     private lateinit var btnLogout: Button
+    private lateinit var switchAvailability: Switch
+    private lateinit var tvAvailabilityStatus: TextView
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -42,13 +52,17 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Initialize UI elements
+        // Initialize existing views
         tvName = view.findViewById(R.id.textViewFullName)
         tvEmail = view.findViewById(R.id.textViewEmail)
         tvPhone = view.findViewById(R.id.textViewPhoneNumber)
         tvTruckType = view.findViewById(R.id.textViewTruckType)
         tvLicensePlate = view.findViewById(R.id.textViewLicensePlate)
         tvStatus = view.findViewById(R.id.textViewStatus)
+
+        // Initialize availability switch
+        switchAvailability = view.findViewById(R.id.switchAvailability)
+        tvAvailabilityStatus = view.findViewById(R.id.tvAvailabilityStatus)
 
         // Add a logout button to the layout
         btnLogout = Button(requireContext()).apply {
@@ -70,8 +84,13 @@ class ProfileFragment : Fragment() {
         val linearLayout = view.findViewById<ViewGroup>(R.id.linearLayoutProfile)
         linearLayout.addView(btnLogout)
 
-        // Load driver profile data
+        // Load driver profile data and availability status
         loadDriverProfile()
+
+        // Set up availability switch listener
+        switchAvailability.setOnCheckedChangeListener { _, isChecked ->
+            updateDriverAvailability(isChecked)
+        }
     }
 
     private fun loadDriverProfile() {
@@ -95,7 +114,13 @@ class ProfileFragment : Fragment() {
                     tvPhone.text = document.getString("phoneNumber") ?: "Phone not set"
                     tvTruckType.text = document.getString("truckType") ?: "Truck type not set"
                     tvLicensePlate.text = document.getString("licensePlate") ?: "License plate not set"
-                    tvStatus.text = if (document.getBoolean("available") == true) "Available" else "Not Available"
+
+                    // Get availability status
+                    val isAvailable = document.getBoolean("available") ?: false
+                    switchAvailability.isChecked = isAvailable
+                    updateAvailabilityStatusText(isAvailable)
+
+                    tvStatus.text = if (isAvailable) "Available" else "Not Available"
 
                     Toast.makeText(requireContext(), "Profile loaded successfully", Toast.LENGTH_SHORT).show()
                 } else {
@@ -115,7 +140,13 @@ class ProfileFragment : Fragment() {
                                 tvPhone.text = driverDoc.getString("phoneNumber") ?: "Phone not set"
                                 tvTruckType.text = driverDoc.getString("truckType") ?: "Truck type not set"
                                 tvLicensePlate.text = driverDoc.getString("licensePlate") ?: "License plate not set"
-                                tvStatus.text = if (driverDoc.getBoolean("available") == true) "Available" else "Not Available"
+
+                                // Get availability status
+                                val isAvailable = driverDoc.getBoolean("available") ?: false
+                                switchAvailability.isChecked = isAvailable
+                                updateAvailabilityStatusText(isAvailable)
+
+                                tvStatus.text = if (isAvailable) "Available" else "Not Available"
 
                                 Toast.makeText(requireContext(), "Profile loaded from drivers collection", Toast.LENGTH_SHORT).show()
                             } else {
@@ -123,6 +154,8 @@ class ProfileFragment : Fragment() {
                                 Log.d(TAG, "No profile found in users or drivers collection")
                                 tvName.text = "No profile data found"
                                 tvEmail.text = auth.currentUser?.email ?: "Email not available"
+                                switchAvailability.isChecked = false
+                                updateAvailabilityStatusText(false)
 
                                 Toast.makeText(requireContext(), "No profile data found", Toast.LENGTH_SHORT).show()
                             }
@@ -137,5 +170,131 @@ class ProfileFragment : Fragment() {
                 Log.e(TAG, "Error getting user document: ${e.message}")
                 Toast.makeText(requireContext(), "Error loading profile: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+    }
+
+    private fun updateDriverAvailability(isAvailable: Boolean) {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) {
+            Toast.makeText(requireContext(), "Not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Show loading indicator
+        tvAvailabilityStatus.text = "Updating status..."
+        switchAvailability.isEnabled = false
+
+        // First check location permission if becoming available
+        if (isAvailable && !hasLocationPermission()) {
+            requestLocationPermission()
+            switchAvailability.isChecked = false
+            updateAvailabilityStatusText(false)
+            switchAvailability.isEnabled = true
+            return
+        }
+
+        // Start or stop location service based on availability
+        if (isAvailable) {
+            startLocationService()
+        } else {
+            stopLocationService()
+        }
+
+        // Update availability in Firestore (try both collections)
+        val availabilityUpdate = hashMapOf<String, Any>("available" to isAvailable)
+
+        // Try to update in users collection
+        firestore.collection("users")
+            .document(currentUserId)
+            .update(availabilityUpdate)
+            .addOnSuccessListener {
+                Log.d(TAG, "Availability updated successfully in users collection")
+                updateAvailabilityStatusText(isAvailable)
+                switchAvailability.isEnabled = true
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error updating availability in users: ${e.message}")
+
+                // Try drivers collection as fallback
+                firestore.collection("drivers")
+                    .document(currentUserId)
+                    .update(availabilityUpdate)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "Availability updated successfully in drivers collection")
+                        updateAvailabilityStatusText(isAvailable)
+                        switchAvailability.isEnabled = true
+                    }
+                    .addOnFailureListener { e2 ->
+                        Log.e(TAG, "Error updating availability in drivers: ${e2.message}")
+
+                        // If update fails in both collections, try to set the document
+                        val driverData = hashMapOf<String, Any>(
+                            "uid" to currentUserId,
+                            "available" to isAvailable,
+                            "userType" to "driver",
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+
+                        firestore.collection("users")
+                            .document(currentUserId)
+                            .set(driverData, SetOptions.merge())
+                            .addOnSuccessListener {
+                                Log.d(TAG, "Created driver availability document")
+                                updateAvailabilityStatusText(isAvailable)
+                                switchAvailability.isEnabled = true
+                            }
+                            .addOnFailureListener { e3 ->
+                                Log.e(TAG, "Failed to create driver availability: ${e3.message}")
+                                switchAvailability.isChecked = !isAvailable
+                                updateAvailabilityStatusText(!isAvailable)
+                                switchAvailability.isEnabled = true
+                                Toast.makeText(requireContext(), "Failed to update availability", Toast.LENGTH_SHORT).show()
+                            }
+                    }
+            }
+    }
+
+    private fun updateAvailabilityStatusText(isAvailable: Boolean) {
+        tvAvailabilityStatus.text = if (isAvailable) {
+            "You are available for orders"
+        } else {
+            "You are not available for orders"
+        }
+        tvStatus.text = if (isAvailable) "Available" else "Not Available"
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            requireContext(),
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestLocationPermission() {
+        ActivityCompat.requestPermissions(
+            requireActivity(),
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            LOCATION_PERMISSION_REQUEST_CODE
+        )
+        Toast.makeText(requireContext(), "Location permission required to become available", Toast.LENGTH_LONG).show()
+    }
+
+    private fun startLocationService() {
+        val serviceIntent = Intent(requireContext(), LocationService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            requireContext().startForegroundService(serviceIntent)
+        } else {
+            requireContext().startService(serviceIntent)
+        }
+        Log.d(TAG, "Started location service")
+    }
+
+    private fun stopLocationService() {
+        val serviceIntent = Intent(requireContext(), LocationService::class.java)
+        requireContext().stopService(serviceIntent)
+        Log.d(TAG, "Stopped location service")
+    }
+
+    companion object {
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 123
     }
 }
