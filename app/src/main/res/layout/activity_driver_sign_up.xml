@@ -14,14 +14,15 @@
         <EditText
             android:id="@+id/etDriverEmail"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Email" />
+            android:layout_height="48dp"
+            android:hint="Email"
+            android:inputType="textEmailAddress"/>
 
         <!-- Password -->
         <EditText
             android:id="@+id/etDriverPassword"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:hint="Password"
             android:inputType="textPassword" />
 
@@ -29,7 +30,7 @@
         <EditText
             android:id="@+id/etDriverConfirmPassword"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:hint="Confirm Password"
             android:inputType="textPassword" />
 
@@ -37,29 +38,37 @@
         <EditText
             android:id="@+id/etDriverPhone"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:hint="Phone Number"
             android:inputType="phone" />
 
-        <!-- Truck Type -->
-        <EditText
-            android:id="@+id/etDriverTruckType"
+        <!-- Truck Type Label -->
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Truck Type" />
+            android:text="Select Truck Type"
+            android:layout_marginTop="8dp"
+            android:textStyle="bold"/>
+
+        <!-- Truck Type Spinner -->
+        <Spinner
+            android:id="@+id/spinnerDriverTruckType"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginBottom="8dp"/>
 
         <!-- License Plate -->
         <EditText
             android:id="@+id/etDriverLicensePlate"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:hint="License Plate" />
 
         <!-- Full Name -->
         <EditText
             android:id="@+id/etDriverFullName"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:hint="Full Name" />
 
         <Button

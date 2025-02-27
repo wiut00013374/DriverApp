@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.driverapp.OrderDetailActivity
 import com.example.driverapp.R
 import com.example.driverapp.adapters.OrderAdapter
-import com.example.driverapp.data.Driver
 import com.example.driverapp.data.Order
 import com.example.driverapp.interfaces.OrderActionListener
 import com.example.driverapp.repos.DriverOrderRepository
@@ -34,6 +33,7 @@ class OrdersFragment : Fragment(), OrderActionListener {
     private var truckType = "Medium" // Default, will be updated when driver profile loads
 
     companion object {
+        private const val TAG = "OrdersFragment"
         private const val TAB_AVAILABLE = 0
         private const val TAB_MY_ORDERS = 1
     }
@@ -58,14 +58,16 @@ class OrdersFragment : Fragment(), OrderActionListener {
 
         // Set up RecyclerView
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        adapter = OrderAdapter(currentList, this)
+
+        // Initialize adapter with empty list first
+        adapter = OrderAdapter(availableOrdersList, this)
         recyclerView.adapter = adapter
+
+        // Default to showing available orders
+        currentList = availableOrdersList
 
         // Load driver profile to get truck type
         loadDriverProfile()
-
-        // Initial load of available orders
-        currentList = availableOrdersList
 
         // Set up tab selection listener
         tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
@@ -92,15 +94,20 @@ class OrdersFragment : Fragment(), OrderActionListener {
     private fun loadDriverProfile() {
         val driverId = auth.currentUser?.uid ?: return
 
-        firestore.collection("drivers").document(driverId)
+        firestore.collection("users")
+            .document(driverId)
             .get()
             .addOnSuccessListener { document ->
-                val driver = document.toObject(Driver::class.java)
-                if (driver != null) {
-                    truckType = driver.truckType
+                if (document != null && document.exists()) {
+                    truckType = document.getString("truckType") ?: "Medium"
 
                     // Now that we have the truck type, load orders
                     loadOrders()
+
+                    Toast.makeText(context, "Found profile with truck type: $truckType", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "No driver profile found, using default truck type", Toast.LENGTH_SHORT).show()
+                    loadOrders() // Load with default truck type
                 }
             }
             .addOnFailureListener { e ->
@@ -114,6 +121,12 @@ class OrdersFragment : Fragment(), OrderActionListener {
     private fun loadOrders() {
         // Listen for available orders
         DriverOrderRepository.listenForAvailableOrders(truckType) { orders ->
+            if (orders.isEmpty()) {
+                Toast.makeText(context, "No available orders found", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Found ${orders.size} available orders", Toast.LENGTH_SHORT).show()
+            }
+
             availableOrdersList.clear()
             availableOrdersList.addAll(orders)
 
@@ -124,7 +137,14 @@ class OrdersFragment : Fragment(), OrderActionListener {
         }
 
         // Listen for orders assigned to this driver
-        DriverOrderRepository.listenForDriverOrders { orders ->
+        val currentUserId = auth.currentUser?.uid ?: return
+        DriverOrderRepository.listenForDriverOrders(currentUserId) { orders ->
+            if (orders.isEmpty()) {
+                Toast.makeText(context, "No assigned orders found", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Found ${orders.size} assigned orders", Toast.LENGTH_SHORT).show()
+            }
+
             myOrdersList.clear()
             myOrdersList.addAll(orders)
 

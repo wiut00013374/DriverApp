@@ -8,6 +8,10 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.driverapp.R
 import com.example.driverapp.data.Chat
+import com.google.firebase.firestore.FirebaseFirestore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ChatAdapter(private val chats: List<Chat>) : RecyclerView.Adapter<ChatAdapter.ChatViewHolder>() {
 
@@ -25,11 +29,20 @@ class ChatAdapter(private val chats: List<Chat>) : RecyclerView.Adapter<ChatAdap
 
     override fun onBindViewHolder(holder: ChatViewHolder, position: Int) {
         val chat = chats[position]
-        // You'll need to adapt this based on your Chat data class and layout.
-        holder.tvDriverName.text = chat.driverUid // Or customerUid, depending on who you're showing
+        // Fetch customer/driver name using UID (pseudo-code)
+        FirebaseFirestore.getInstance().collection("users").document(chat.customerUid)
+            .get()
+            .addOnSuccessListener { doc ->
+                val name = doc.getString("displayName") ?: "Customer"
+                holder.tvDriverName.text = name
+            }
         holder.tvLastMessage.text = chat.lastMessage ?: "No messages yet"
-        holder.tvTimestamp.text = chat.timestamp.toString() // Format this properly
+        holder.tvTimestamp.text = formatTimestamp(chat.timestamp)
     }
 
+    private fun formatTimestamp(timestamp: Long): String {
+        val format = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+        return format.format(Date(timestamp))
+    }
     override fun getItemCount(): Int = chats.size
 }

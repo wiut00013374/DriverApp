@@ -1,4 +1,3 @@
-// login/DriverSignUpActivity.kt
 package com.example.driverapp.login
 
 import android.content.Intent
@@ -9,93 +8,216 @@ import com.example.driverapp.MainActivity
 import com.example.driverapp.R
 import com.example.driverapp.data.Driver
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase // Import Realtime Database
+import com.google.firebase.firestore.FirebaseFirestore
 
 class DriverSignUpActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private lateinit var database: FirebaseDatabase // Realtime Database
+    private lateinit var firestore: FirebaseFirestore
 
+    // UI Components
+    private lateinit var etEmail: EditText
+    private lateinit var etPassword: EditText
+    private lateinit var etConfirmPassword: EditText
+    private lateinit var etPhone: EditText
+    private lateinit var spinnerTruckType: Spinner
+    private lateinit var etLicensePlate: EditText
+    private lateinit var etFullName: EditText
+    private lateinit var btnSignUp: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_driver_sign_up)
 
+        // Initialize Firebase components
         auth = FirebaseAuth.getInstance()
-        database = FirebaseDatabase.getInstance() // Initialize Realtime Database
+        firestore = FirebaseFirestore.getInstance()
 
+        // Initialize UI components
+        initializeViews()
 
-        val etEmail = findViewById<EditText>(R.id.etDriverEmail)
-        val etPassword = findViewById<EditText>(R.id.etDriverPassword)
-        val etConfirmPassword = findViewById<EditText>(R.id.etDriverConfirmPassword)
-        val etPhoneNumber = findViewById<EditText>(R.id.etDriverPhone)
-        val etTruckType = findViewById<EditText>(R.id.etDriverTruckType)
-        val etLicensePlate = findViewById<EditText>(R.id.etDriverLicensePlate)
-        val etFullName = findViewById<EditText>(R.id.etDriverFullName)
-        val btnSignUp = findViewById<Button>(R.id.btnDriverSignUp)
-
+        // Setup sign up button click listener
         btnSignUp.setOnClickListener {
-            val email = etEmail.text.toString().trim()
-            val password = etPassword.text.toString().trim()
-            val confirmPassword = etConfirmPassword.text.toString().trim()
-            val phoneNumber = etPhoneNumber.text.toString().trim()
-            val truckType = etTruckType.text.toString().trim()
-            val licensePlate = etLicensePlate.text.toString().trim()
-            val fullName = etFullName.text.toString().trim()
+            validateAndSignUp()
+        }
+    }
 
-            if (email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty() ||
-                phoneNumber.isEmpty() || truckType.isEmpty() || licensePlate.isEmpty() || fullName.isEmpty()) {
-                Toast.makeText(this, "Please fill all fields", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+    private fun initializeViews() {
+        etEmail = findViewById(R.id.etDriverEmail)
+        etPassword = findViewById(R.id.etDriverPassword)
+        etConfirmPassword = findViewById(R.id.etDriverConfirmPassword)
+        etPhone = findViewById(R.id.etDriverPhone)
+        spinnerTruckType = findViewById(R.id.spinnerDriverTruckType)
+        etLicensePlate = findViewById(R.id.etDriverLicensePlate)
+        etFullName = findViewById(R.id.etDriverFullName)
+        btnSignUp = findViewById(R.id.btnDriverSignUp)
+
+        // Set up Truck Type Spinner
+        val truckTypes = arrayOf(
+            "Select Truck Type",
+            "Small",
+            "Medium",
+            "Large",
+            "Refrigerated",
+            "Flatbed"
+        )
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            truckTypes
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerTruckType.adapter = adapter
+    }
+
+    private fun validateAndSignUp() {
+        // Collect input values
+        val email = etEmail.text.toString().trim()
+        val password = etPassword.text.toString().trim()
+        val confirmPassword = etConfirmPassword.text.toString().trim()
+        val phoneNumber = etPhone.text.toString().trim()
+        val truckTypePosition = spinnerTruckType.selectedItemPosition
+        val truckType = spinnerTruckType.selectedItem.toString()
+        val licensePlate = etLicensePlate.text.toString().trim()
+        val fullName = etFullName.text.toString().trim()
+
+        // Validate inputs
+        if (!validateInputs(
+                email,
+                password,
+                confirmPassword,
+                phoneNumber,
+                truckTypePosition,
+                licensePlate,
+                fullName
+            )
+        ) {
+            return
+        }
+
+        // Proceed with sign up
+        signUpDriver(
+            email,
+            password,
+            phoneNumber,
+            truckType,
+            licensePlate,
+            fullName
+        )
+    }
+
+    private fun validateInputs(
+        email: String,
+        password: String,
+        confirmPassword: String,
+        phoneNumber: String,
+        truckTypePosition: Int,
+        licensePlate: String,
+        fullName: String
+    ): Boolean {
+        return when {
+            email.isEmpty() -> {
+                etEmail.error = "Email cannot be empty"
+                false
             }
-
-            if (password != confirmPassword) {
-                Toast.makeText(this, "Passwords do not match", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+            !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches() -> {
+                etEmail.error = "Invalid email format"
+                false
             }
+            password.isEmpty() -> {
+                etPassword.error = "Password cannot be empty"
+                false
+            }
+            password.length < 6 -> {
+                etPassword.error = "Password must be at least 6 characters"
+                false
+            }
+            password != confirmPassword -> {
+                etConfirmPassword.error = "Passwords do not match"
+                false
+            }
+            fullName.isEmpty() -> {
+                etFullName.error = "Full name cannot be empty"
+                false
+            }
+            phoneNumber.isEmpty() -> {
+                etPhone.error = "Phone number cannot be empty"
+                false
+            }
+            truckTypePosition == 0 -> {
+                Toast.makeText(this, "Please select a truck type", Toast.LENGTH_SHORT).show()
+                false
+            }
+            licensePlate.isEmpty() -> {
+                etLicensePlate.error = "License plate cannot be empty"
+                false
+            }
+            else -> true
+        }
+    }
 
-            auth.createUserWithEmailAndPassword(email, password)
-                .addOnCompleteListener(this) { task ->
-                    if (task.isSuccessful) {
-                        // Sign up success, now store driver data in Realtime DB
-                        val user = auth.currentUser
+    private fun signUpDriver(
+        email: String,
+        password: String,
+        phoneNumber: String,
+        truckType: String,
+        licensePlate: String,
+        fullName: String
+    ) {
+        // Show loading indicator or disable button
+        btnSignUp.isEnabled = false
+
+        // Create user in Firebase Authentication
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    // Get the newly created user
+                    val user = auth.currentUser
+
+                    user?.let { firebaseUser ->
+                        // Create Driver object
                         val driver = Driver(
-                            driverId = user!!.uid, // Use the UID as the driver ID
+                            uid = firebaseUser.uid,
                             email = email,
+                            displayName = fullName,
                             phoneNumber = phoneNumber,
                             truckType = truckType,
-                            licensePlate = licensePlate, // You might want to encrypt this
-                            name = fullName,
-                            available = false // Initially not available
-
+                            licensePlate = licensePlate,
+                            available = false
                         )
 
-                        database.getReference("drivers/${user.uid}")
-                            .setValue(driver)
+                        // Save driver details to Firestore
+                        firestore.collection("drivers")
+                            .document(firebaseUser.uid)
+                            .set(driver)
                             .addOnSuccessListener {
-                                // Send email verification
-                                user.sendEmailVerification()
-                                    .addOnCompleteListener { verificationTask ->
-                                        if (verificationTask.isSuccessful) {
-                                            Toast.makeText(baseContext, "Verification email sent to $email", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(baseContext, "Failed to send verification email.", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-
-                                Toast.makeText(baseContext, "Driver registered successfully", Toast.LENGTH_SHORT).show()
-                                startActivity(Intent(this@DriverSignUpActivity, MainActivity::class.java))
-                                finish()
+                                // Navigate to MainActivity
+                                navigateToMainActivity()
                             }
                             .addOnFailureListener { e ->
-                                // Handle database write failure
-                                Toast.makeText(this, "Database error: ${e.message}", Toast.LENGTH_LONG).show()
+                                // Handle Firestore save failure
+                                handleSignUpFailure("Failed to save driver profile: ${e.message}")
                             }
-                    } else {
-                        // If sign up fails, display a message to the user.
-                        Toast.makeText(baseContext, "Authentication failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
                     }
+                } else {
+                    // Handle authentication failure
+                    handleSignUpFailure(task.exception?.message ?: "Sign up failed")
                 }
-        }
+            }
+    }
+
+    private fun navigateToMainActivity() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
+    }
+
+    private fun handleSignUpFailure(errorMessage: String) {
+        // Re-enable sign up button
+        btnSignUp.isEnabled = true
+
+        // Show error message
+        Toast.makeText(this, errorMessage, Toast.LENGTH_SHORT).show()
     }
 }

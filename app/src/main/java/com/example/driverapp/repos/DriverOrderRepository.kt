@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.tasks.await
 
 /**
  * Repository for managing order-related operations from the driver's perspective.
@@ -30,19 +31,25 @@ object DriverOrderRepository {
         ordersListenerRegistration = firestore.collection(COLLECTION)
             .whereEqualTo("status", "Pending")
             .whereEqualTo("truckType", truckType)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening for orders: ${error.message}")
+                    onOrdersUpdate(emptyList())
                     return@addSnapshotListener
                 }
 
                 val orders = snapshot?.documents?.mapNotNull { doc ->
-                    doc.toObject(Order::class.java)?.apply {
-                        id = doc.id // Ensure the ID is set
+                    try {
+                        doc.toObject(Order::class.java)?.apply {
+                            id = doc.id // Ensure the ID is set
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error converting document to Order: ${e.message}")
+                        null
                     }
                 } ?: emptyList()
 
+                Log.d(TAG, "Available orders found: ${orders.size}")
                 onOrdersUpdate(orders)
             }
     }
@@ -50,27 +57,31 @@ object DriverOrderRepository {
     /**
      * Listen for orders assigned to the current driver
      */
-    fun listenForDriverOrders(onOrdersUpdate: (List<Order>) -> Unit) {
-        val currentUserId = auth.currentUser?.uid ?: return
-
+    fun listenForDriverOrders(driverUid: String, onOrdersUpdate: (List<Order>) -> Unit) {
         // Cancel any previous listener
         driverOrdersListenerRegistration?.remove()
 
         driverOrdersListenerRegistration = firestore.collection(COLLECTION)
-            .whereEqualTo("driverUid", currentUserId)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .whereEqualTo("driverUid", driverUid)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening for driver orders: ${error.message}")
+                    onOrdersUpdate(emptyList())
                     return@addSnapshotListener
                 }
 
                 val orders = snapshot?.documents?.mapNotNull { doc ->
-                    doc.toObject(Order::class.java)?.apply {
-                        id = doc.id
+                    try {
+                        doc.toObject(Order::class.java)?.apply {
+                            id = doc.id
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error converting document to Order: ${e.message}")
+                        null
                     }
                 } ?: emptyList()
 
+                Log.d(TAG, "Driver orders found: ${orders.size}")
                 onOrdersUpdate(orders)
             }
     }
@@ -93,6 +104,8 @@ object DriverOrderRepository {
         firestore.collection(COLLECTION).document(orderId)
             .update(updates)
             .addOnSuccessListener {
+                // Also update the driver's status in the contact list
+                updateDriverInContactList(orderId, currentUserId, "accepted")
                 onComplete(true)
             }
             .addOnFailureListener { e ->
@@ -101,6 +114,92 @@ object DriverOrderRepository {
             }
     }
 
+    /**
+     * Accept an order - for use with coroutines
+     */
+    suspend fun acceptOrder(orderId: String): Boolean {
+        return try {
+            val currentUserId = auth.currentUser?.uid ?: return false
+
+            // First check if the order is still available
+            val orderDoc = firestore.collection(COLLECTION).document(orderId).get().await()
+
+            // If order already has a driver, it's too late
+            if (orderDoc.getString("driverUid") != null) {
+                Log.w(TAG, "Order $orderId already has a driver assigned")
+                return false
+            }
+
+            // Get the drivers contact list to update it
+            val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
+
+            // Update the order with this driver and change status
+            val updates = hashMapOf<String, Any>(
+                "driverUid" to currentUserId,
+                "status" to "Accepted"
+            )
+
+            // Also update the driver's status in the contact list if it exists
+            if (driversContactList != null) {
+                val updatedList = driversContactList.toMutableMap()
+                updatedList[currentUserId] = "accepted"
+                updates["driversContactList"] = updatedList
+            }
+
+            // Update the order
+            firestore.collection(COLLECTION).document(orderId)
+                .update(updates)
+                .await()
+
+            Log.d(TAG, "Order $orderId accepted by driver $currentUserId")
+            return true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error accepting order: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Reject an order - for use with coroutines
+     */
+    suspend fun rejectOrder(orderId: String): Boolean {
+        return try {
+            val currentUserId = auth.currentUser?.uid ?: return false
+
+            // Get the order data
+            val orderDoc = firestore.collection(COLLECTION).document(orderId).get().await()
+
+            // Get the drivers contact list
+            val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
+                ?: return false
+
+            // Update the driver's status in the contact list
+            val updatedList = driversContactList.toMutableMap()
+            updatedList[currentUserId] = "rejected"
+
+            // Get the current index
+            val currentIndex = orderDoc.getLong("currentDriverIndex")?.toInt() ?: 0
+
+            // Update the order with the rejected status and increment the index
+            firestore.collection(COLLECTION).document(orderId)
+                .update(
+                    mapOf(
+                        "driversContactList" to updatedList,
+                        "currentDriverIndex" to currentIndex + 1
+                    )
+                )
+                .await()
+
+            Log.d(TAG, "Order $orderId rejected by driver $currentUserId")
+
+            return true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error rejecting order: ${e.message}")
+            return false
+        }
+    }
     /**
      * Update order status (In Progress, Delivered, etc.)
      */
@@ -117,6 +216,7 @@ object DriverOrderRepository {
                     firestore.collection(COLLECTION).document(orderId)
                         .update("status", newStatus)
                         .addOnSuccessListener {
+                            Log.d(TAG, "Order status updated to $newStatus")
                             onComplete(true)
                         }
                         .addOnFailureListener { e ->
@@ -156,6 +256,7 @@ object DriverOrderRepository {
                     firestore.collection(COLLECTION).document(orderId)
                         .update(updates)
                         .addOnSuccessListener {
+                            Log.d(TAG, "Order assignment canceled")
                             onComplete(true)
                         }
                         .addOnFailureListener { e ->
@@ -181,4 +282,33 @@ object DriverOrderRepository {
         ordersListenerRegistration?.remove()
         driverOrdersListenerRegistration?.remove()
     }
-}
+
+    /**
+     * Helper function to update a driver's status in the contact list
+     */
+    private fun updateDriverInContactList(orderId: String, driverId: String, status: String) {
+        firestore.collection(COLLECTION).document(orderId)
+            .get()
+            .addOnSuccessListener { document ->
+                val driversContactList = document.get("driversContactList") as? Map<String, String>
+
+                if (driversContactList != null) {
+                    // Update the driver's status in the list
+                    val updatedList = driversContactList.toMutableMap()
+                    updatedList[driverId] = status
+
+                    // Update Firestore
+                    firestore.collection(COLLECTION).document(orderId)
+                        .update("driversContactList", updatedList)
+                        .addOnSuccessListener {
+                            Log.d(TAG, "Updated driver $driverId status to $status in contact list")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Error updating contact list: ${e.message}")
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Error getting order for contact list update: ${e.message}")
+            }
+    }}
