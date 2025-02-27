@@ -179,7 +179,7 @@ class DriverSignUpActivity : AppCompatActivity() {
                         val driver = Driver(
                             uid = firebaseUser.uid,
                             email = email,
-                            displayName = fullName,
+                            driverName = fullName,
                             phoneNumber = phoneNumber,
                             truckType = truckType,
                             licensePlate = licensePlate,

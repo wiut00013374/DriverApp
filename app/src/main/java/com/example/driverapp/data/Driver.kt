@@ -7,7 +7,7 @@ package com.example.driverapp.data
 data class Driver(
     val uid: String = "",                    // Unique identifier (Firebase Auth UID)
     val email: String = "",                  // Email address
-    val displayName: String = "",            // Driver's full name
+    val driverName: String = "",            // Driver's full name
     val phoneNumber: String = "",            // Contact phone number
     val truckType: String = "",              // Type of truck (Small, Medium, Large, etc.)
     val licensePlate: String = "",           // Vehicle license plate

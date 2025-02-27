@@ -21,6 +21,7 @@
     <!-- Foreground service permission -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+
     <application
         android:name=".DriverApplication"
         android:allowBackup="true"
@@ -67,7 +68,8 @@
             android:name=".services.LocationService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            tools:ignore="ForegroundServicePermission" />
 
         <!-- Firebase Messaging Service for notifications -->
         <service
