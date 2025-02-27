@@ -1,0 +1,19 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /drivers/{driverId} {
+      // Allow unauthenticated users to perform 'where' queries on 'licensePlate'
+      allow list: if request.query.where('licensePlate') != null;
+      
+      // Allow authenticated users to read any driver document
+      allow get: if request.auth != null;
+      
+      // Allow users to create their own driver document
+      allow create: if request.auth != null && request.auth.uid == driverId;
+      
+      // Allow users to update or delete their own driver document
+      allow update, delete: if request.auth != null && request.auth.uid == driverId;
+    }
+
+    // Other collections...
+  }
+}

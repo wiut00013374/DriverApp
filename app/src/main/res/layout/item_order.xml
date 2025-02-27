@@ -1,0 +1,30 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvOrigin"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="From: City A" />
+
+    <TextView
+        android:id="@+id/tvDestination"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="To: City B" />
+
+    <TextView
+        android:id="@+id/tvPrice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Price: $100.00" />
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status: Pending" />
+
+</LinearLayout>

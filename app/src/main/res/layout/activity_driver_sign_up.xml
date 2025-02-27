@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Email -->
+        <EditText
+            android:id="@+id/etDriverEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Email" />
+
+        <!-- Password -->
+        <EditText
+            android:id="@+id/etDriverPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Password"
+            android:inputType="textPassword" />
+
+        <!-- Confirm Password -->
+        <EditText
+            android:id="@+id/etDriverConfirmPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Confirm Password"
+            android:inputType="textPassword" />
+
+        <!-- Phone Number -->
+        <EditText
+            android:id="@+id/etDriverPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Phone Number"
+            android:inputType="phone" />
+
+        <!-- Truck Type -->
+        <EditText
+            android:id="@+id/etDriverTruckType"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Truck Type" />
+
+        <!-- License Plate -->
+        <EditText
+            android:id="@+id/etDriverLicensePlate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="License Plate" />
+
+        <!-- Full Name -->
+        <EditText
+            android:id="@+id/etDriverFullName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Full Name" />
+
+        <Button
+            android:id="@+id/btnDriverSignUp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sign Up" />
+    </LinearLayout>
+</ScrollView>
