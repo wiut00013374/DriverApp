@@ -1,66 +1,133 @@
-<!-- res/layout/activity_order_details.xml -->
+<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:padding="16dp"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent" >
+    android:layout_height="match_parent"
+    tools:context=".OrderDetailActivity">
 
     <LinearLayout
-        android:orientation="vertical"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <TextView
-            android:id="@+id/tvOriginDetail"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:id="@+id/tvDestinationDetail"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:id="@+id/tvPriceDetail"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <!-- More fields: volume, weight, lat/lon, truckType, etc. -->
-        <TextView
-            android:id="@+id/tvVolumeDetail"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <TextView
-            android:id="@+id/tvWeightDetail"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-        <!-- Buttons row -->
-        <LinearLayout
-            android:layout_marginTop="16dp"
-            android:orientation="horizontal"
+        <!-- Map showing route -->
+        <org.osmdroid.views.MapView
+            android:id="@+id/mapOrderRoute"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="200dp"
+            android:layout_marginBottom="16dp" />
 
-            <Button
-                android:id="@+id/btnAcceptOrder"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Accept Order" />
+        <!-- Order details section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Order Details"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
 
-            <Button
-                android:id="@+id/btnContactCustomer"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Contact Customer" />
-        </LinearLayout>
+        <TextView
+            android:id="@+id/tvDetailOriginCity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Origin: City A"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
 
+        <TextView
+            android:id="@+id/tvDetailDestinationCity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Destination: City B"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDetailPrice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Price: $100.00"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDetailTruckType"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Truck Type: Medium"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDetailVolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Volume: 10 m³"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDetailWeight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Weight: 500 kg"
+            android:textSize="16sp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvDetailStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Status: Pending"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Action buttons section -->
+        <Button
+            android:id="@+id/btnDetailAccept"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Accept Order"
+            android:backgroundTint="@color/purple_500"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDetailStartDelivery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start Delivery"
+            android:backgroundTint="@color/teal_700"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDetailCompleteDelivery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Complete Delivery"
+            android:backgroundTint="@color/teal_700"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDetailContactCustomer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Contact Customer"
+            android:backgroundTint="@color/purple_500"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDetailCancelDelivery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cancel Delivery"
+            android:backgroundTint="#FF5252"
+            android:textColor="@android:color/white"
+            android:visibility="gone" />
     </LinearLayout>
 </ScrollView>
