@@ -4,19 +4,19 @@ package com.example.driverapp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.viewModelScope
-import com.example.driverapp.data.Driver
+import com.example.driverapp.data.User
 import kotlinx.coroutines.launch
 
-class DriverViewModel(private val repo: DriverRepository = DriverRepository()) : ViewModel() {
-    val driverData: LiveData<Driver?> = repo.driverData
+class UserViewModel(private val repo: UserRepository = UserRepository()) : ViewModel() {
+    val userData: LiveData<User?> = repo.userData
 
     init {
-        fetchDriverData()
+        fetchUserData()
     }
 
-    fun fetchDriverData() {
+    fun fetchUserData() {
         viewModelScope.launch {
-            repo.fetchDriverData()
+            repo.fetchUserData()
         }
     }
 

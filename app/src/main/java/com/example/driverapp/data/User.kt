@@ -1,32 +1,33 @@
 package com.example.driverapp.data
 
+/**
+ * Data class representing a driver.
+ * This model is designed to be compatible with the customer app's expectations.
+ */
 data class User(
-    val uid: String = "",                      // Firebase Auth UID (document ID)
-    val email: String = "",                    // User email address
-    val displayName: String = "",              // User's display name
-    val phoneNumber: String = "",              // Contact phone number
-    val userType: String = "customer",         // Either "customer" or "driver"
-    val createdAt: Long = System.currentTimeMillis(), // Account creation timestamp
-    val fcmToken: String = "",                 // Firebase Cloud Messaging token for notifications
-
-    // Driver-specific fields (only used when userType = "driver")
-    val available: Boolean = false,            // Driver availability status
-    val truckType: String = "",                // Type of truck (Small, Medium, Large, etc.)
-    val licensePlate: String = "",             // Vehicle license plate
-    val location: GeoLocation? = null,         // Current driver location
-    val heading: Float = 0f,                   // Direction (0-359 degrees)
-    val speed: Float = 0f,                     // Speed in km/h
-    val lastLocationUpdate: Long = 0,          // When location was last updated
-    val lastStatusUpdate: Long = 0,            // When availability status was last updated
-    val lastOnline: Long = 0,                  // When driver was last online
-    val rating: Float = 0f,                    // Driver rating (0-5 stars)
-    val completedOrders: Int = 0               // Number of completed orders
+    val uid: String = "",                    // Unique identifier (Firebase Auth UID)
+    val email: String = "",                  // Email address
+    val driverName: String = "",            // Driver's full name
+    val phoneNumber: String = "",            // Contact phone number
+    val truckType: String = "",              // Type of truck (Small, Medium, Large, etc.)
+    val licensePlate: String = "",           // Vehicle license plate
+    val available: Boolean = false,          // Driver availability status
+    val location: DriverLocation = DriverLocation(), // Current driver location
+    val rating: Float = 0.0f,                // Driver rating (0-5 stars)
+    val completedOrders: Int = 0,            // Number of completed orders
+    val fcmToken: String = "",               // Firebase Cloud Messaging token for notifications
+    val userType: String = "driver",         // User type (always "driver")
+    val createdAt: Long = System.currentTimeMillis() // Account creation timestamp
 )
 
 /**
- * GeoLocation data object for storing location coordinates
+ * Location data for the driver.
  */
-data class GeoLocation(
+data class DriverLocation(
     val latitude: Double = 0.0,
-    val longitude: Double = 0.0
+    val longitude: Double = 0.0,
+    val heading: Float = 0.0f,               // Direction (0-359 degrees)
+    val speed: Float = 0.0f,                 // Speed in km/h
+    val timestamp: Long = System.currentTimeMillis(), // When this location was recorded
+    val address: String = ""                 // Optional reverse-geocoded address
 )

@@ -14,6 +14,8 @@ import com.example.driverapp.fragment.HomeFragment
 import com.example.driverapp.fragment.OrdersFragment
 import com.example.driverapp.fragment.ProfileFragment
 import com.example.driverapp.login.DriverSignInActivity
+import com.example.driverapp.services.DriverFirebaseMessagingService
+import com.example.driverapp.services.FCMTokenManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
 
@@ -24,6 +26,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        DriverFirebaseMessagingService.retrieveAndSaveToken()
+
 
         if (auth.currentUser == null) {
             // Not authenticated; redirect to DriverSignInActivity

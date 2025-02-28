@@ -6,7 +6,7 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.driverapp.MainActivity
 import com.example.driverapp.R
-import com.example.driverapp.data.Driver
+import com.example.driverapp.data.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -96,7 +96,7 @@ class DriverSignUpActivity : AppCompatActivity() {
         }
 
         // Proceed with sign up
-        signUpDriver(
+        signUpUser(
             email,
             password,
             phoneNumber,
@@ -156,7 +156,7 @@ class DriverSignUpActivity : AppCompatActivity() {
         }
     }
 
-    private fun signUpDriver(
+    private fun signUpUser(
         email: String,
         password: String,
         phoneNumber: String,
@@ -176,20 +176,22 @@ class DriverSignUpActivity : AppCompatActivity() {
 
                     user?.let { firebaseUser ->
                         // Create Driver object
-                        val driver = Driver(
+                        val user = User(
                             uid = firebaseUser.uid,
                             email = email,
                             driverName = fullName,
                             phoneNumber = phoneNumber,
+                            userType = "driver",
                             truckType = truckType,
                             licensePlate = licensePlate,
-                            available = false
+                            available = false,
+                            createdAt = System.currentTimeMillis()
                         )
 
                         // Save driver details to Firestore
-                        firestore.collection("drivers")
+                        firestore.collection("users")
                             .document(firebaseUser.uid)
-                            .set(driver)
+                            .set(user)
                             .addOnSuccessListener {
                                 // Navigate to MainActivity
                                 navigateToMainActivity()

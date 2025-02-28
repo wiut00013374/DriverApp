@@ -26,7 +26,10 @@ class OrderActionsReceiver : android.content.BroadcastReceiver() {
     private val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
 
     override fun onReceive(context: Context, intent: Intent) {
-        val orderId = intent.getStringExtra("order_id") ?: return
+        val orderId = intent.getStringExtra("orderId") ?:
+        intent.getStringExtra("order_id") ?:
+        return
+
         val action = intent.action ?: return
 
         Log.d(TAG, "Received action: $action for order: $orderId")

@@ -17,7 +17,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.driverapp.R
-import com.example.driverapp.data.Driver
 import com.example.driverapp.login.DriverSignInActivity
 import com.example.driverapp.services.LocationService
 import com.google.firebase.auth.FirebaseAuth
@@ -85,7 +84,7 @@ class ProfileFragment : Fragment() {
         linearLayout.addView(btnLogout)
 
         // Load driver profile data and availability status
-        loadDriverProfile()
+        loadUserProfile()
 
         // Set up availability switch listener
         switchAvailability.setOnCheckedChangeListener { _, isChecked ->
@@ -93,7 +92,7 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    private fun loadDriverProfile() {
+    private fun loadUserProfile() {
         val currentUserId = auth.currentUser?.uid
         if (currentUserId == null) {
             Toast.makeText(requireContext(), "Not logged in", Toast.LENGTH_SHORT).show()
@@ -127,7 +126,7 @@ class ProfileFragment : Fragment() {
                     Log.d(TAG, "No user document found, checking drivers collection")
 
                     // If not found in users collection, try the drivers collection
-                    firestore.collection("drivers")
+                    firestore.collection("users")
                         .document(currentUserId)
                         .get()
                         .addOnSuccessListener { driverDoc ->

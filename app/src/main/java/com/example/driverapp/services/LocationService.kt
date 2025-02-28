@@ -52,7 +52,7 @@ class LocationService : Service() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
-                    updateDriverLocation(location)
+                    updateUserLocation(location)
                 }
             }
         }
@@ -75,7 +75,7 @@ class LocationService : Service() {
         updateDriverAvailability(true)
     }
 
-    private fun updateDriverLocation(location: Location) {
+    private fun updateUserLocation(location: Location) {
         val currentUserId = auth.currentUser?.uid ?: return
 
         // Create location data
@@ -91,7 +91,7 @@ class LocationService : Service() {
         firestore.collection("users").document(currentUserId)
             .update(locationData as Map<String, Any>)
             .addOnSuccessListener {
-                Log.d(TAG, "Driver location updated successfully in users collection")
+                Log.d(TAG, "User location updated successfully in users collection")
             }
             .addOnFailureListener { e ->
                 // If update fails, try to set with merge option
