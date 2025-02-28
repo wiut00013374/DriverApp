@@ -27,7 +27,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        DriverFirebaseMessagingService.retrieveAndSaveToken()
+
+
+// Or alternatively:
+        FCMTokenManager.retrieveAndSaveToken()
 
 
         if (auth.currentUser == null) {

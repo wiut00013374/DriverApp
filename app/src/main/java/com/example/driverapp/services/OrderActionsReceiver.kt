@@ -1,11 +1,14 @@
 package com.example.driverapp.services
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import com.example.driverapp.OrderDetailActivity
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -14,7 +17,7 @@ import kotlinx.coroutines.tasks.await
 /**
  * BroadcastReceiver to handle order accept/reject actions from notifications
  */
-class OrderActionsReceiver : android.content.BroadcastReceiver() {
+class OrderActionsReceiver : BroadcastReceiver() {
 
     companion object {
         const val TAG = "OrderActionsReceiver"
@@ -22,37 +25,36 @@ class OrderActionsReceiver : android.content.BroadcastReceiver() {
         const val ACTION_REJECT_ORDER = "com.example.driverapp.REJECT_ORDER"
     }
 
-    private val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-    private val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+    private val firestore = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
 
     override fun onReceive(context: Context, intent: Intent) {
-        val orderId = intent.getStringExtra("orderId") ?:
-        intent.getStringExtra("order_id") ?:
-        return
-
+        // Extract the order ID from the intent
+        val orderId = intent.getStringExtra("order_id") ?: return
         val action = intent.action ?: return
 
         Log.d(TAG, "Received action: $action for order: $orderId")
 
         // Cancel the notification
-        OrderNotificationHandler.cancelOrderNotification(context, orderId)
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(orderId.hashCode())
 
         when (action) {
             ACTION_ACCEPT_ORDER -> {
-                android.widget.Toast.makeText(context, "Accepting order...", android.widget.Toast.LENGTH_SHORT).show()
-                handleAcceptOrder(context, orderId)
+                Toast.makeText(context, "Accepting order...", Toast.LENGTH_SHORT).show()
+                acceptOrder(context, orderId)
             }
             ACTION_REJECT_ORDER -> {
-                android.widget.Toast.makeText(context, "Rejecting order...", android.widget.Toast.LENGTH_SHORT).show()
-                handleRejectOrder(context, orderId)
+                Toast.makeText(context, "Rejecting order...", Toast.LENGTH_SHORT).show()
+                rejectOrder(context, orderId)
             }
         }
     }
 
-    private fun handleAcceptOrder(context: Context, orderId: String) {
+    private fun acceptOrder(context: Context, orderId: String) {
         val currentUserId = auth.currentUser?.uid ?: return
 
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 // First check if the order is still available
                 val orderDoc = firestore.collection("orders").document(orderId).get().await()
@@ -99,16 +101,16 @@ class OrderActionsReceiver : android.content.BroadcastReceiver() {
                 context.startActivity(detailsIntent)
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error accepting order: ${e.message}")
+                Log.e(TAG, "Error accepting order: ${e.message}", e)
                 showToast(context, "Failed to accept order: ${e.message}")
             }
         }
     }
 
-    private fun handleRejectOrder(context: Context, orderId: String) {
+    private fun rejectOrder(context: Context, orderId: String) {
         val currentUserId = auth.currentUser?.uid ?: return
 
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 // Get the order data
                 val orderDoc = firestore.collection("orders").document(orderId).get().await()
@@ -142,15 +144,15 @@ class OrderActionsReceiver : android.content.BroadcastReceiver() {
                 showToast(context, "Order rejected")
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error rejecting order: ${e.message}")
+                Log.e(TAG, "Error rejecting order: ${e.message}", e)
                 showToast(context, "Failed to reject order: ${e.message}")
             }
         }
     }
 
     private fun showToast(context: Context, message: String) {
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.Main).launch {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 }

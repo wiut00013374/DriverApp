@@ -27,6 +27,7 @@
 
     <application
         android:name=".DriverApplication"
+        android:enableOnBackInvokedCallback="true"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -36,7 +37,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+        tools:targetApi="tiramisu">
 
         <!-- Main entry point -->
         <activity
@@ -75,6 +76,7 @@
             tools:ignore="ForegroundServicePermission" />
 
         <!-- Firebase Messaging Service for notifications -->
+        <!-- Update DriverFirebaseMessagingService entry -->
         <service
             android:name=".services.DriverFirebaseMessagingService"
             android:exported="false">

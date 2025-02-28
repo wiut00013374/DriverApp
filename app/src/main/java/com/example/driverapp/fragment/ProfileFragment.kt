@@ -51,7 +51,7 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Initialize existing views
+        // Initialize UI elements
         tvName = view.findViewById(R.id.textViewFullName)
         tvEmail = view.findViewById(R.id.textViewEmail)
         tvPhone = view.findViewById(R.id.textViewPhoneNumber)
@@ -63,7 +63,7 @@ class ProfileFragment : Fragment() {
         switchAvailability = view.findViewById(R.id.switchAvailability)
         tvAvailabilityStatus = view.findViewById(R.id.tvAvailabilityStatus)
 
-        // Add a logout button to the layout
+        // Add logout button
         btnLogout = Button(requireContext()).apply {
             text = "Logout"
             layoutParams = ViewGroup.LayoutParams(
@@ -79,11 +79,11 @@ class ProfileFragment : Fragment() {
             }
         }
 
-        // Find the LinearLayout in fragment_profile.xml and add the button
+        // Add the button to layout
         val linearLayout = view.findViewById<ViewGroup>(R.id.linearLayoutProfile)
         linearLayout.addView(btnLogout)
 
-        // Load driver profile data and availability status
+        // Load driver profile data
         loadUserProfile()
 
         // Set up availability switch listener
@@ -99,7 +99,7 @@ class ProfileFragment : Fragment() {
             return
         }
 
-        // First try to load from "users" collection (this matches the FreightApp structure)
+        // Try to load from "users" collection
         firestore.collection("users")
             .document(currentUserId)
             .get()
@@ -107,7 +107,7 @@ class ProfileFragment : Fragment() {
                 if (document != null && document.exists()) {
                     Log.d(TAG, "User document data: ${document.data}")
 
-                    // Display the user data
+                    // Display user data
                     tvName.text = document.getString("displayName") ?: "Name not set"
                     tvEmail.text = auth.currentUser?.email ?: "Email not available"
                     tvPhone.text = document.getString("phoneNumber") ?: "Phone not set"
@@ -126,14 +126,14 @@ class ProfileFragment : Fragment() {
                     Log.d(TAG, "No user document found, checking drivers collection")
 
                     // If not found in users collection, try the drivers collection
-                    firestore.collection("users")
+                    firestore.collection("drivers")
                         .document(currentUserId)
                         .get()
                         .addOnSuccessListener { driverDoc ->
                             if (driverDoc != null && driverDoc.exists()) {
                                 Log.d(TAG, "Driver document data: ${driverDoc.data}")
 
-                                // Display the driver data
+                                // Display driver data
                                 tvName.text = driverDoc.getString("displayName") ?: "Name not set"
                                 tvEmail.text = auth.currentUser?.email ?: "Email not available"
                                 tvPhone.text = driverDoc.getString("phoneNumber") ?: "Phone not set"
@@ -182,7 +182,7 @@ class ProfileFragment : Fragment() {
         tvAvailabilityStatus.text = "Updating status..."
         switchAvailability.isEnabled = false
 
-        // First check location permission if becoming available
+        // Check location permission if becoming available
         if (isAvailable && !hasLocationPermission()) {
             requestLocationPermission()
             switchAvailability.isChecked = false
@@ -198,7 +198,7 @@ class ProfileFragment : Fragment() {
             stopLocationService()
         }
 
-        // Update availability in Firestore (try both collections)
+        // Update availability in Firestore
         val availabilityUpdate = hashMapOf<String, Any>("available" to isAvailable)
 
         // Try to update in users collection
