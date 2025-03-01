@@ -14,9 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-/**
- * BroadcastReceiver to handle order accept/reject actions from notifications
- */
 class OrderActionsReceiver : BroadcastReceiver() {
 
     companion object {
@@ -77,7 +74,8 @@ class OrderActionsReceiver : BroadcastReceiver() {
                 // Update the order with this driver and change status
                 val updates = hashMapOf<String, Any>(
                     "driverUid" to currentUserId,
-                    "status" to "Accepted"
+                    "status" to "Accepted",
+                    "acceptedAt" to System.currentTimeMillis()
                 )
 
                 // Also update the driver's status in the contact list

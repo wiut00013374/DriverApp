@@ -67,6 +67,11 @@
             android:name=".ChatActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".OrderRequestActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <!-- Location tracking service -->
         <service
             android:name=".services.LocationService"
