@@ -30,11 +30,13 @@ class MainActivity : AppCompatActivity() {
 
 
 // Or alternatively:
-        FCMTokenManager.retrieveAndSaveToken()
 
 
-        if (auth.currentUser == null) {
-            // Not authenticated; redirect to DriverSignInActivity
+
+
+        if (auth.currentUser != null) {
+            FCMTokenManager.retrieveAndSaveToken()
+        } else {
             startActivity(Intent(this, DriverSignInActivity::class.java))
             finish()
             return

@@ -7,13 +7,17 @@ import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.driverapp.OrderRequestActivity
 import com.example.driverapp.R
 import com.example.driverapp.data.Order
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +32,14 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
     private val auth = FirebaseAuth.getInstance()
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        Log.d("DriverFCMService", "From: ${remoteMessage.from}")
+        remoteMessage.data.let {
+            Log.d("DriverFCMService", "Message data payload: $it")
+        }
+        remoteMessage.notification?.let {
+            Log.d("DriverFCMService", "Message Notification Body: ${it.body}")
+            showNotification(it.title ?: "New Order", it.body ?: "Tap to view details.")
+        }
         super.onMessageReceived(remoteMessage)
         Log.d(TAG, "From: ${remoteMessage.from}")
 
@@ -47,10 +59,8 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
         }
 
         remoteMessage.notification?.let {
-            Log.d(TAG, "Message Notification Body: ${it.body}")
-            if (remoteMessage.data.isEmpty()) {
-                showBasicNotification(it.title ?: "New Notification", it.body ?: "Check your app for details")
-            }
+            Log.d("DriverFCMService", "Message Notification Body: ${it.body}")
+            showNotification(it.title ?: "New Order", it.body ?: "Tap to view details.")
         }
     }
 
@@ -139,8 +149,30 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
         notificationManager.notify(orderId.hashCode(), notificationBuilder.build())
     }
 
-    private fun showBasicNotification(title: String, message: String, id: String? = null) {
-        // Basic notification implementation
+    private fun showNotification(title: String, message: String) {
+        val channelId = "driver_channel"
+        val notificationId = System.currentTimeMillis().toInt()
+
+        val notificationBuilder = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Create channel for Android 8.0 (Oreo) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Driver Notifications",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        notificationManager.notify(notificationId, notificationBuilder.build())
     }
 
     private fun createNotificationChannel(channelId: String, channelName: String, importance: Int) {
@@ -155,20 +187,46 @@ class DriverFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "Refreshed FCM token: $token")
+        Log.d(TAG, "New FCM token received: $token")
 
-        val user = auth.currentUser
+        val user = FirebaseAuth.getInstance().currentUser
         if (user != null) {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    firestore.collection("users").document(user.uid)
+                    val result = firestore.collection("users")
+                        .document(user.uid)
                         .update("fcmToken", token)
                         .await()
-                    Log.d(TAG, "FCM Token updated in users collection")
+
+                    Log.d(TAG, "FCM Token updated in Firestore for user: ${user.uid}")
+                } catch (e: FirebaseFirestoreException) {
+                    when (e.code) {
+                        FirebaseFirestoreException.Code.NOT_FOUND -> {
+                            Log.w(TAG, "User document not found, creating new entry.")
+                            try {
+                                firestore.collection("users")
+                                    .document(user.uid)
+                                    .set(mapOf("fcmToken" to token))
+                                    .await()
+                                Log.d(TAG, "New user document created with FCM token.")
+                            } catch (e2: Exception) {
+                                Log.e(TAG, "Failed to create new user document: ${e2.message}")
+                            }
+                        }
+                        FirebaseFirestoreException.Code.PERMISSION_DENIED -> {
+                            Log.e(TAG, "Permission denied. Check Firestore rules.")
+                        }
+                        else -> {
+                            Log.e(TAG, "Failed to update token: ${e.message}")
+                        }
+                    }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update token: ${e.message}")
+                    Log.e(TAG, "Unexpected error: ${e.message}")
                 }
             }
+        } else {
+            Log.w(TAG, "No authenticated user, cannot update FCM token.")
         }
     }
+
 }
