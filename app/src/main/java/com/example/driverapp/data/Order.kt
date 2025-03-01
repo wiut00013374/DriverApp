@@ -19,7 +19,11 @@ data class Order(
     var weight: Double = 0.0,
     var status: String = "Pending", // pending, accepted, in_progress, delivered, cancelled
     val driversContacted: MutableMap<String, String> = mutableMapOf(), // Track contacted drivers
-    val timestamp: Long = System.currentTimeMillis() // Add a timestamp
+    val timestamp: Long = System.currentTimeMillis(), // Add a timestamp
+    var driversContactList: MutableMap<String, String> = mutableMapOf(),
+    var lastDriverNotificationTime: Long = 0L,
+    var currentDriverIndex: Int = 0,
+    var acceptedAt: Long = 0L
 ) : Parcelable {
 
     constructor(parcel: Parcel) : this(
