@@ -2,6 +2,7 @@ package com.example.driverapp.data
 
 import android.os.Parcel
 import android.os.Parcelable
+import com.google.firebase.firestore.GeoPoint
 
 data class Order(
     var id: String = "",
@@ -17,16 +18,29 @@ data class Order(
     var truckType: String = "",
     var volume: Double = 0.0,
     var weight: Double = 0.0,
-    var status: String = "Pending", // pending, accepted, in_progress, delivered, cancelled
+    var status: String = "Pending", // pending, accepted, in_progress, picked_up, delivered, cancelled
     val driversContacted: MutableMap<String, String> = mutableMapOf(), // Track contacted drivers
     val timestamp: Long = System.currentTimeMillis(), // Add a timestamp
     var driversContactList: MutableMap<String, String> = mutableMapOf(),
     var lastDriverNotificationTime: Long = 0L,
     var currentDriverIndex: Int = 0,
-    var acceptedAt: Long = 0L
+    var acceptedAt: Long = 0L,
+    var pickedUpAt: Long = 0L,
+    var deliveredAt: Long = 0L,
+    var cancelledAt: Long = 0L,
+    var cancelledBy: String = "",
+    var distanceToPickup: Double = 0.0,
+    var distanceToDelivery: Double = 0.0,
+    var driverCanPickup: Boolean = false,
+    var driverCanDeliver: Boolean = false,
+    var driverLocation: GeoPoint? = null,
+    var driverHeading: Float = 0f,
+    var driverSpeed: Float = 0f,
+    var driverLastUpdate: Long = 0L
 ) : Parcelable {
 
-    constructor(parcel: Parcel) : this(
+    // Since GeoPoint is not Parcelable, we handle it separately
+    private constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
         parcel.readString() ?: "",
         parcel.readString(),
@@ -49,6 +63,29 @@ data class Order(
                 put(key, value)
             }
         },
+        parcel.readLong(),
+        mutableMapOf<String, String>().apply {
+            val count = parcel.readInt()
+            for (i in 0 until count) {
+                val key = parcel.readString() ?: ""
+                val value = parcel.readString() ?: ""
+                put(key, value)
+            }
+        },
+        parcel.readLong(),
+        parcel.readInt(),
+        parcel.readLong(),
+        parcel.readLong(),
+        parcel.readLong(),
+        parcel.readLong(),
+        parcel.readString() ?: "",
+        parcel.readDouble(),
+        parcel.readDouble(),
+        parcel.readInt() == 1,
+        parcel.readInt() == 1,
+        null, // GeoPoint cannot be directly parceled
+        parcel.readFloat(),
+        parcel.readFloat(),
         parcel.readLong()
     )
 
@@ -67,13 +104,38 @@ data class Order(
         parcel.writeDouble(volume)
         parcel.writeDouble(weight)
         parcel.writeString(status)
+
+        // Write driversContacted map
         parcel.writeInt(driversContacted.size)
         for ((key, value) in driversContacted) {
             parcel.writeString(key)
             parcel.writeString(value)
         }
+
         parcel.writeLong(timestamp)
-    }
+
+        // Write driversContactList map
+        parcel.writeInt(driversContactList.size)
+        for ((key, value) in driversContactList) {
+            parcel.writeString(key)
+            parcel.writeString(value)
+        }
+
+        parcel.writeLong(lastDriverNotificationTime)
+        parcel.writeInt(currentDriverIndex)
+        parcel.writeLong(acceptedAt)
+        parcel.writeLong(pickedUpAt)
+        parcel.writeLong(deliveredAt)
+        parcel.writeLong(cancelledAt)
+        parcel.writeString(cancelledBy)
+        parcel.writeDouble(distanceToPickup)
+        parcel.writeDouble(distanceToDelivery)
+        parcel.writeInt(if (driverCanPickup) 1 else 0)
+        parcel.writeInt(if (driverCanDeliver) 1 else 0)
+        // We cannot directly write GeoPoint, so we just skip it
+        parcel.writeFloat(driverHeading)
+        parcel.writeFloat(driverSpeed)
+        parcel.writeLong(driverLastUpdate)}
 
     override fun describeContents(): Int {
         return 0

@@ -12,9 +12,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.driverapp.data.Order
-import com.example.driverapp.services.ChatRepository
 import com.example.driverapp.services.LocationService
 import com.example.driverapp.services.OrderStatusTracker
+import com.example.myapp.repos.ChatRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
@@ -263,3 +263,402 @@ class OrderDetailActivity : AppCompatActivity() {
             }
         }
     }
+    private fun setupButtonListeners() {
+        // Accept order button
+        btnAccept.setOnClickListener {
+            acceptOrder()
+        }
+
+        // Start trip button
+        btnStartTrip.setOnClickListener {
+            startDeliveryTrip()
+        }
+
+        // Picked up button
+        btnPickedUp.setOnClickListener {
+            markOrderAsPickedUp()
+        }
+
+        // Delivered button
+        btnDelivered.setOnClickListener {
+            markOrderAsDelivered()
+        }
+
+        // Cancel delivery button
+        btnCancelDelivery.setOnClickListener {
+            cancelDelivery()
+        }
+
+        // Contact customer button
+        btnContactCustomer.setOnClickListener {
+            contactCustomer()
+        }
+    }
+
+    private fun acceptOrder() {
+        val currentOrder = order ?: return
+        val currentUserId = auth.currentUser?.uid ?: return
+
+        // Disable buttons to prevent multiple clicks
+        disableActionButtons()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Check if the order is still available
+                val orderDoc = firestore.collection("orders").document(currentOrder.id).get().await()
+
+                // If order already has a driver, it's too late
+                if (orderDoc.getString("driverUid") != null) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        Toast.makeText(
+                            this@OrderDetailActivity,
+                            "This order has already been accepted by another driver",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        finish()
+                    }
+                    return@launch
+                }
+
+                // Update the order with this driver and change status
+                val updates = hashMapOf<String, Any>(
+                    "driverUid" to currentUserId,
+                    "status" to "Accepted",
+                    "acceptedAt" to System.currentTimeMillis()
+                )
+
+                // Also update the driver's status in the contact list if it exists
+                val driversContactList = orderDoc.get("driversContactList") as? Map<String, String>
+                if (driversContactList != null) {
+                    val updatedList = driversContactList.toMutableMap()
+                    updatedList[currentUserId] = "accepted"
+                    updates["driversContactList"] = updatedList
+                }
+
+                // Update the order
+                firestore.collection("orders").document(currentOrder.id)
+                    .update(updates)
+                    .await()
+
+                // Start location service for this order
+                CoroutineScope(Dispatchers.Main).launch {
+                    LocationService.startForOrder(this@OrderDetailActivity, currentOrder.id)
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Order accepted! Starting location tracking.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    // Refresh order details to update button visibility
+                    fetchOrderById(currentOrder.id)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error accepting order: ${e.message}")
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Error accepting order: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    enableActionButtons()
+                }
+            }
+        }
+    }
+
+    private fun startDeliveryTrip() {
+        val currentOrder = order ?: return
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Update order status to "In Progress"
+                firestore.collection("orders").document(currentOrder.id)
+                    .update("status", "In Progress")
+                    .await()
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Trip started! Navigate to pickup location.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    // Refresh order details
+                    fetchOrderById(currentOrder.id)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting trip: ${e.message}")
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Error starting trip: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun markOrderAsPickedUp() {
+        val currentOrder = order ?: return
+
+        // Check if driver is close enough to pickup location
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Get the latest order data to check if driver can pickup
+                val orderDoc = firestore.collection("orders").document(currentOrder.id)
+                    .get()
+                    .await()
+
+                val driverCanPickup = orderDoc.getBoolean("driverCanPickup") ?: false
+
+                if (!driverCanPickup) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        Toast.makeText(
+                            this@OrderDetailActivity,
+                            "You must be within 10km of the pickup location",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                // Update order status to "Picked Up"
+                firestore.collection("orders").document(currentOrder.id)
+                    .update(
+                        mapOf(
+                            "status" to "Picked Up",
+                            "pickedUpAt" to System.currentTimeMillis()
+                        )
+                    )
+                    .await()
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Order marked as picked up! Navigate to delivery location.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    // Refresh order details
+                    fetchOrderById(currentOrder.id)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error marking order as picked up: ${e.message}")
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Error marking order as picked up: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun markOrderAsDelivered() {
+        val currentOrder = order ?: return
+
+        // Check if driver is close enough to delivery location
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Get the latest order data to check if driver can deliver
+                val orderDoc = firestore.collection("orders").document(currentOrder.id)
+                    .get()
+                    .await()
+
+                val driverCanDeliver = orderDoc.getBoolean("driverCanDeliver") ?: false
+
+                if (!driverCanDeliver) {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        Toast.makeText(
+                            this@OrderDetailActivity,
+                            "You must be within 10km of the delivery location",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                // Update order status to "Delivered"
+                firestore.collection("orders").document(currentOrder.id)
+                    .update(
+                        mapOf(
+                            "status" to "Delivered",
+                            "deliveredAt" to System.currentTimeMillis()
+                        )
+                    )
+                    .await()
+
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Order successfully delivered!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    // Stop location service
+                    LocationService.stop(this@OrderDetailActivity)
+
+                    // Refresh order details
+                    fetchOrderById(currentOrder.id)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error marking order as delivered: ${e.message}")
+                CoroutineScope(Dispatchers.Main).launch {
+                    Toast.makeText(
+                        this@OrderDetailActivity,
+                        "Error marking order as delivered: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun cancelDelivery() {
+        val currentOrder = order ?: return
+
+        AlertDialog.Builder(this)
+            .setTitle("Cancel Delivery")
+            .setMessage("Are you sure you want to cancel this delivery? This action cannot be undone.")
+            .setPositiveButton("Yes, Cancel") { _, _ ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        // Update order status to "Cancelled"
+                        firestore.collection("orders").document(currentOrder.id)
+                            .update(
+                                mapOf(
+                                    "status" to "Cancelled",
+                                    "cancelledAt" to System.currentTimeMillis(),
+                                    "cancelledBy" to "driver"
+                                )
+                            )
+                            .await()
+
+                        // Stop location service
+                        LocationService.stop(this@OrderDetailActivity)
+
+                        CoroutineScope(Dispatchers.Main).launch {
+                            Toast.makeText(
+                                this@OrderDetailActivity,
+                                "Delivery cancelled",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error cancelling delivery: ${e.message}")
+                        CoroutineScope(Dispatchers.Main).launch {
+                            Toast.makeText(
+                                this@OrderDetailActivity,
+                                "Error cancelling delivery: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    private fun contactCustomer() {
+        val currentOrder = order ?: return
+        val currentUserId = auth.currentUser?.uid ?: return
+        val customerUid = currentOrder.uid
+
+        if (customerUid.isBlank()) {
+            Toast.makeText(this, "Customer information not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Show loading indicator
+        val loadingDialog = AlertDialog.Builder(this)
+            .setView(layoutInflater.inflate(R.layout.dialog_loading, null))
+            .setCancelable(false)
+            .create()
+        loadingDialog.show()
+
+        // Create or get existing chat
+        ChatRepository.createOrGetChat(currentOrder.id, currentUserId, customerUid) { chatId ->
+            loadingDialog.dismiss()
+
+            if (chatId != null) {
+                // Open chat activity
+                val intent = Intent(this, ChatActivity::class.java)
+                intent.putExtra("EXTRA_CHAT_ID", chatId)
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "Failed to create chat", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun disableActionButtons() {
+        btnAccept.isEnabled = false
+        btnStartTrip.isEnabled = false
+        btnPickedUp.isEnabled = false
+        btnDelivered.isEnabled = false
+        btnCancelDelivery.isEnabled = false
+    }
+
+    private fun enableActionButtons() {
+        btnAccept.isEnabled = true
+        btnStartTrip.isEnabled = true
+        btnPickedUp.isEnabled = true
+        btnDelivered.isEnabled = true
+        btnCancelDelivery.isEnabled = true
+    }
+
+    private fun setupOrderListener() {
+        // Get the order ID
+        val orderIdValue = orderId ?: order?.id ?: return
+
+        // Set up real-time listener for order updates
+        orderListener = firestore.collection("orders").document(orderIdValue)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening for order updates: ${error.message}")
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    // Convert to Order object
+                    val updatedOrder = snapshot.toObject(Order::class.java)?.apply {
+                        id = snapshot.id
+                    }
+
+                    if (updatedOrder != null) {
+                        // Update local order object
+                        order = updatedOrder
+
+                        // Update UI
+                        displayOrderDetails(updatedOrder)
+
+                        // Check if UI needs updating based on proximity flags
+                        val driverCanPickup = snapshot.getBoolean("driverCanPickup") ?: false
+                        val driverCanDeliver = snapshot.getBoolean("driverCanDeliver") ?: false
+
+                        // Enable/disable buttons based on proximity
+                        if (updatedOrder.status == "In Progress") {
+                            btnPickedUp.isEnabled = driverCanPickup
+                            if (driverCanPickup) {
+                                btnPickedUp.text = "Confirm Pickup (Within Range)"
+                            } else {
+                                btnPickedUp.text = "Pickup (Get Closer)"
+                            }
+                        } else if (updatedOrder.status == "Picked Up") {
+                            btnDelivered.isEnabled = driverCanDeliver
+                            if (driverCanDeliver) {
+                                btnDelivered.text = "Confirm Delivery (Within Range)"
+                            } else {
+                                btnDelivered.text = "Deliver (Get Closer)"
+                            }
+                        }
+                    }
+                }
+            }
+    }
+}

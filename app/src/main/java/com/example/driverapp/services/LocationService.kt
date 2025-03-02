@@ -59,7 +59,7 @@ class LocationService : Service() {
 
                     // If there's an active order, check for proximity to pickup location
                     currentOrderId?.let { orderId ->
-                        checkProximityToPickupLocation(location, orderId)
+                        checkProximityToPickupOrDelivery(location, orderId)
                     }
                 }
             }
@@ -149,10 +149,12 @@ class LocationService : Service() {
         currentOrderId?.let { orderId ->
             firestore.collection("orders").document(orderId)
                 .update(
-                    "driverLocation" to geoPoint,
-                    "driverHeading" to location.bearing,
-                    "driverSpeed" to location.speed,
-                    "driverLastUpdate" to System.currentTimeMillis()
+                    mapOf(
+                        "driverLocation" to geoPoint,
+                        "driverHeading" to location.bearing,
+                        "driverSpeed" to location.speed,
+                        "driverLastUpdate" to System.currentTimeMillis()
+                    )
                 )
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Error updating driver location in order: ${e.message}")
@@ -161,17 +163,17 @@ class LocationService : Service() {
     }
 
     /**
-     * Check if the driver is close to the pickup location
+     * Check if the driver is close to the pickup or delivery location
      */
-    private fun checkProximityToPickupLocation(location: Location, orderId: String) {
+    private fun checkProximityToPickupOrDelivery(location: Location, orderId: String) {
         firestore.collection("orders").document(orderId)
             .get()
             .addOnSuccessListener { document ->
                 if (document.exists()) {
                     val orderStatus = document.getString("status") ?: ""
 
-                    // Only check proximity if the order is in "Accepted" status (not yet picked up)
-                    if (orderStatus == "Accepted") {
+                    if (orderStatus == "Accepted" || orderStatus == "In Progress") {
+                        // Check proximity to pickup location
                         val originLat = document.getDouble("originLat") ?: 0.0
                         val originLon = document.getDouble("originLon") ?: 0.0
 
@@ -180,13 +182,47 @@ class LocationService : Service() {
                         pickupLocation.latitude = originLat
                         pickupLocation.longitude = originLon
 
-                        val distanceToPickup = location.distanceTo(pickupLocation) / 1000f // Convert to kilometers
+                        val distanceToPickup = location.distanceTo(pickupLocation) / 1000.0 // Convert to kilometers
 
                         Log.d(TAG, "Distance to pickup: $distanceToPickup km")
 
                         // Update the distance to pickup in the order document
                         firestore.collection("orders").document(orderId)
-                            .update("distanceToPickup", distanceToPickup)
+                            .update(
+                                mapOf(
+                                    "distanceToPickup" to distanceToPickup,
+                                    "driverCanPickup" to (distanceToPickup <= 10.0)
+                                )
+                            )
+
+                        // If status is just "Accepted", update to "In Progress"
+                        // once location updates start flowing
+                        if (orderStatus == "Accepted") {
+                            firestore.collection("orders").document(orderId)
+                                .update("status", "In Progress")
+                        }
+                    } else if (orderStatus == "Picked Up") {
+                        // Check proximity to delivery location
+                        val destLat = document.getDouble("destinationLat") ?: 0.0
+                        val destLon = document.getDouble("destinationLon") ?: 0.0
+
+                        // Calculate distance to delivery location
+                        val deliveryLocation = Location("delivery")
+                        deliveryLocation.latitude = destLat
+                        deliveryLocation.longitude = destLon
+
+                        val distanceToDelivery = location.distanceTo(deliveryLocation) / 1000.0 // Convert to kilometers
+
+                        Log.d(TAG, "Distance to delivery: $distanceToDelivery km")
+
+                        // Update the distance to delivery in the order document
+                        firestore.collection("orders").document(orderId)
+                            .update(
+                                mapOf(
+                                    "distanceToDelivery" to distanceToDelivery,
+                                    "driverCanDeliver" to (distanceToDelivery <= 10.0)
+                                )
+                            )
                     }
                 }
             }
