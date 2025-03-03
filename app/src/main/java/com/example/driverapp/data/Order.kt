@@ -36,7 +36,11 @@ data class Order(
     var driverLocation: GeoPoint? = null,
     var driverHeading: Float = 0f,
     var driverSpeed: Float = 0f,
-    var driverLastUpdate: Long = 0L
+    var driverLastUpdate: Long = 0L,
+    var pickupEta: Long = 0L,           // ETA for pickup in milliseconds (timestamp)
+    var deliveryEta: Long = 0L,         // ETA for delivery in milliseconds (timestamp)
+    var lastStatusMessage: String = "",  // Last status message
+    var lastStatusUpdate: Long = 0L      // Timestamp of last status update
 ) : Parcelable {
 
     // Since GeoPoint is not Parcelable, we handle it separately
@@ -86,6 +90,10 @@ data class Order(
         null, // GeoPoint cannot be directly parceled
         parcel.readFloat(),
         parcel.readFloat(),
+        parcel.readLong(),
+        parcel.readLong(),
+        parcel.readLong(),
+        parcel.readString() ?: "",
         parcel.readLong()
     )
 
@@ -135,7 +143,12 @@ data class Order(
         // We cannot directly write GeoPoint, so we just skip it
         parcel.writeFloat(driverHeading)
         parcel.writeFloat(driverSpeed)
-        parcel.writeLong(driverLastUpdate)}
+        parcel.writeLong(driverLastUpdate)
+        parcel.writeLong(pickupEta)
+        parcel.writeLong(deliveryEta)
+        parcel.writeString(lastStatusMessage)
+        parcel.writeLong(lastStatusUpdate)
+    }
 
     override fun describeContents(): Int {
         return 0

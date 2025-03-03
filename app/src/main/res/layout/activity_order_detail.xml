@@ -28,6 +28,28 @@
             android:layout_height="250dp"
             android:layout_marginBottom="16dp" />
 
+        <!-- Proximity Information -->
+        <TextView
+            android:id="@+id/tvProximityInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Checking proximity..."
+            android:textAlignment="center"
+            android:padding="8dp"
+            android:background="#E0E0E0"
+            android:layout_marginBottom="8dp" />
+
+        <!-- ETA Information -->
+        <TextView
+            android:id="@+id/tvEtaInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Calculating ETA..."
+            android:textAlignment="center"
+            android:padding="8dp"
+            android:background="#F5F5F5"
+            android:layout_marginBottom="16dp" />
+
         <!-- Order details section -->
         <TextView
             android:layout_width="match_parent"
@@ -115,30 +137,30 @@
             android:visibility="gone" />
 
         <Button
-            android:id="@+id/btnDetailReject"
+            android:id="@+id/btnDetailStartTrip"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Reject Order"
-            android:backgroundTint="#F44336"
-            android:textColor="#FFFFFF"
-            android:layout_marginBottom="8dp"
-            android:visibility="gone" />
-
-        <Button
-            android:id="@+id/btnDetailStartDelivery"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Start Delivery"
+            android:text="Start Trip"
             android:backgroundTint="#2196F3"
             android:textColor="#FFFFFF"
             android:layout_marginBottom="8dp"
             android:visibility="gone" />
 
         <Button
-            android:id="@+id/btnDetailCompleteDelivery"
+            android:id="@+id/btnDetailPickedUp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Complete Delivery"
+            android:text="Mark as Picked Up"
+            android:backgroundTint="#FF9800"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnDetailDelivered"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Mark as Delivered"
             android:backgroundTint="#4CAF50"
             android:textColor="#FFFFFF"
             android:layout_marginBottom="8dp"

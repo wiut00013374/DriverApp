@@ -13,20 +13,25 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.driverapp.data.Order
 import com.example.driverapp.services.LocationService
-import com.example.driverapp.services.OrderStatusTracker
+import com.example.driverapp.services.NotificationService
 import com.example.myapp.repos.ChatRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class OrderDetailActivity : AppCompatActivity() {
 
@@ -41,6 +46,8 @@ class OrderDetailActivity : AppCompatActivity() {
     private lateinit var tvWeight: TextView
     private lateinit var tvStatus: TextView
     private lateinit var tvLoadingMessage: TextView
+    private lateinit var tvProximityInfo: TextView
+    private lateinit var tvEtaInfo: TextView
 
     // Buttons for order actions
     private lateinit var btnAccept: Button
@@ -55,7 +62,13 @@ class OrderDetailActivity : AppCompatActivity() {
     private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
-    // Location tracking listener
+    // Driver location marker
+    private var driverMarker: Marker? = null
+
+    // Route polyline
+    private var routePolyline: Polyline? = null
+
+    // Order listener
     private var orderListener: com.google.firebase.firestore.ListenerRegistration? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,6 +118,8 @@ class OrderDetailActivity : AppCompatActivity() {
         tvWeight = findViewById(R.id.tvDetailWeight)
         tvStatus = findViewById(R.id.tvDetailStatus)
         tvLoadingMessage = findViewById(R.id.tvLoadingMessage)
+        tvProximityInfo = findViewById(R.id.tvProximityInfo)
+        tvEtaInfo = findViewById(R.id.tvEtaInfo)
 
         btnAccept = findViewById(R.id.btnDetailAccept)
         btnStartTrip = findViewById(R.id.btnDetailStartTrip)
@@ -124,7 +139,7 @@ class OrderDetailActivity : AppCompatActivity() {
                     id = orderDoc.id
                 }
 
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     tvLoadingMessage.visibility = View.GONE
 
                     if (fetchedOrder != null) {
@@ -138,7 +153,7 @@ class OrderDetailActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching order: ${e.message}")
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     tvLoadingMessage.visibility = View.GONE
                     Toast.makeText(this@OrderDetailActivity, "Error loading order: ${e.message}", Toast.LENGTH_SHORT).show()
                     finish()
@@ -164,13 +179,96 @@ class OrderDetailActivity : AppCompatActivity() {
         tvWeight.text = "Weight: ${order.weight} kg"
         tvStatus.text = "Status: ${order.status}"
 
+        // Display proximity information
+        updateProximityInfo(order)
+
+        // Update ETA information
+        updateEtaInfo(order)
+
         // Configure buttons based on order status
         updateButtonVisibility(order)
     }
 
+    private fun updateProximityInfo(order: Order) {
+        val currentUserId = auth.currentUser?.uid
+        val isDriverOfThisOrder = order.driverUid == currentUserId
+
+        if (isDriverOfThisOrder) {
+            tvProximityInfo.visibility = View.VISIBLE
+
+            when (order.status) {
+                "Accepted", "In Progress" -> {
+                    val distance = order.distanceToPickup
+                    val canPickup = order.driverCanPickup
+
+                    if (canPickup) {
+                        tvProximityInfo.text = "You are within 10km of the pickup location"
+                        tvProximityInfo.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    } else {
+                        tvProximityInfo.text = "Distance to pickup: ${String.format("%.1f", distance)} km"
+                        tvProximityInfo.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                    }
+                }
+                "Picked Up" -> {
+                    val distance = order.distanceToDelivery
+                    val canDeliver = order.driverCanDeliver
+
+                    if (canDeliver) {
+                        tvProximityInfo.text = "You are within 10km of the delivery location"
+                        tvProximityInfo.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    } else {
+                        tvProximityInfo.text = "Distance to delivery: ${String.format("%.1f", distance)} km"
+                        tvProximityInfo.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                    }
+                }
+                else -> {
+                    tvProximityInfo.visibility = View.GONE
+                }
+            }
+        } else {
+            tvProximityInfo.visibility = View.GONE
+        }
+    }
+
+    private fun updateEtaInfo(order: Order) {
+        val dateFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        tvEtaInfo.visibility = View.VISIBLE
+
+        when (order.status) {
+            "Accepted", "In Progress" -> {
+                val pickupEta = order.pickupEta
+                if (pickupEta > 0) {
+                    val etaDate = Date(pickupEta)
+                    tvEtaInfo.text = "Estimated pickup time: ${dateFormat.format(etaDate)}"
+                } else {
+                    tvEtaInfo.text = "Calculating ETA to pickup..."
+                }
+            }
+            "Picked Up" -> {
+                val deliveryEta = order.deliveryEta
+                if (deliveryEta > 0) {
+                    val etaDate = Date(deliveryEta)
+                    tvEtaInfo.text = "Estimated delivery time: ${dateFormat.format(etaDate)}"
+                } else {
+                    tvEtaInfo.text = "Calculating ETA to delivery..."
+                }
+            }
+            "Delivered", "Completed" -> {
+                tvEtaInfo.text = "Order completed"
+            }
+            else -> {
+                tvEtaInfo.visibility = View.GONE
+            }
+        }
+    }
+
     private fun loadRouteAndUpdateMap(order: Order) {
+        // Clear existing overlays
+        mapView.overlays.clear()
+
         // Add origin marker
-        val originPoint = GeoPoint(order.originLat, order.originLon)
+        val originPoint = org.osmdroid.util.GeoPoint(order.originLat, order.originLon)
         val originMarker = Marker(mapView)
         originMarker.position = originPoint
         originMarker.title = "Origin: ${order.originCity}"
@@ -179,7 +277,7 @@ class OrderDetailActivity : AppCompatActivity() {
         mapView.overlays.add(originMarker)
 
         // Add destination marker
-        val destPoint = GeoPoint(order.destinationLat, order.destinationLon)
+        val destPoint = org.osmdroid.util.GeoPoint(order.destinationLat, order.destinationLon)
         val destMarker = Marker(mapView)
         destMarker.position = destPoint
         destMarker.title = "Destination: ${order.destinationCity}"
@@ -188,15 +286,49 @@ class OrderDetailActivity : AppCompatActivity() {
         mapView.overlays.add(destMarker)
 
         // Draw a simple line between origin and destination
-        val routeLine = Polyline()
-        routeLine.addPoint(originPoint)
-        routeLine.addPoint(destPoint)
-        routeLine.color = ContextCompat.getColor(this, R.color.purple_500)
-        routeLine.width = 5f
-        mapView.overlays.add(routeLine)
+        routePolyline = Polyline()
+        routePolyline?.addPoint(originPoint)
+        routePolyline?.addPoint(destPoint)
+        routePolyline?.color = ContextCompat.getColor(this, R.color.purple_500)
+        routePolyline?.width = 5f
+        mapView.overlays.add(routePolyline)
 
-        // Zoom to include both points
-        mapView.zoomToBoundingBox(routeLine.bounds.increaseByScale(1.5f), true)
+        // Add driver location marker if available
+        if (order.driverLocation != null) {
+            val driverPoint = org.osmdroid.util.GeoPoint(
+                order.driverLocation!!.latitude,
+                order.driverLocation!!.longitude
+            )
+            driverMarker = Marker(mapView)
+            driverMarker?.position = driverPoint
+            driverMarker?.title = "Driver Location"
+            driverMarker?.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            driverMarker?.icon = ContextCompat.getDrawable(this, R.drawable.ic_driver_location)
+
+            // Rotate marker based on heading
+            if (order.driverHeading != 0f) {
+                driverMarker?.rotation = order.driverHeading
+            }
+
+            mapView.overlays.add(driverMarker)
+        }
+
+        // Zoom to include all points
+        val boundsBuilder = org.osmdroid.util.BoundingBox.builder()
+        boundsBuilder.include(originPoint)
+        boundsBuilder.include(destPoint)
+
+        // Include driver location in bounds if available
+        if (order.driverLocation != null) {
+            boundsBuilder.include(
+                org.osmdroid.util.GeoPoint(
+                    order.driverLocation!!.latitude,
+                    order.driverLocation!!.longitude
+                )
+            )
+        }
+
+        mapView.zoomToBoundingBox(boundsBuilder.build().increaseByScale(1.2f), true)
         mapView.invalidate()
     }
 
@@ -226,14 +358,10 @@ class OrderDetailActivity : AppCompatActivity() {
         // Check if this order is assigned to the current driver
         val isAssignedToMe = order.driverUid == currentUserId
 
-        // Check if this driver is in the contact list
-        val canAcceptOrReject = order.driversContacted?.containsKey(currentUserId ?: "") == true &&
-                order.driversContacted[currentUserId]?.equals("notified", ignoreCase = true) == true
-
         // Show buttons based on order status and assignment
         when (order.status) {
             "Pending" -> {
-                if (canAcceptOrReject) {
+                if (order.driversContacted?.containsKey(currentUserId ?: "") == true) {
                     btnAccept.visibility = View.VISIBLE
                 }
             }
@@ -248,12 +376,34 @@ class OrderDetailActivity : AppCompatActivity() {
                 if (isAssignedToMe) {
                     btnPickedUp.visibility = View.VISIBLE
                     btnContactCustomer.visibility = View.VISIBLE
+
+                    // Update button state based on proximity to pickup
+                    if (order.driverCanPickup) {
+                        btnPickedUp.isEnabled = true
+                        btnPickedUp.text = "Confirm Pickup (Within Range)"
+                        btnPickedUp.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    } else {
+                        btnPickedUp.isEnabled = false
+                        btnPickedUp.text = "Pickup (Get Closer: 10km Required)"
+                        btnPickedUp.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                    }
                 }
             }
             "Picked Up" -> {
                 if (isAssignedToMe) {
                     btnDelivered.visibility = View.VISIBLE
                     btnContactCustomer.visibility = View.VISIBLE
+
+                    // Update button state based on proximity to delivery
+                    if (order.driverCanDeliver) {
+                        btnDelivered.isEnabled = true
+                        btnDelivered.text = "Confirm Delivery (Within Range)"
+                        btnDelivered.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
+                    } else {
+                        btnDelivered.isEnabled = false
+                        btnDelivered.text = "Deliver (Get Closer: 10km Required)"
+                        btnDelivered.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                    }
                 }
             }
             "Delivered", "Completed" -> {
@@ -263,6 +413,7 @@ class OrderDetailActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun setupButtonListeners() {
         // Accept order button
         btnAccept.setOnClickListener {
@@ -309,7 +460,7 @@ class OrderDetailActivity : AppCompatActivity() {
 
                 // If order already has a driver, it's too late
                 if (orderDoc.getString("driverUid") != null) {
-                    CoroutineScope(Dispatchers.Main).launch {
+                    withContext(Dispatchers.Main) {
                         Toast.makeText(
                             this@OrderDetailActivity,
                             "This order has already been accepted by another driver",
@@ -341,11 +492,11 @@ class OrderDetailActivity : AppCompatActivity() {
                     .await()
 
                 // Start location service for this order
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     LocationService.startForOrder(this@OrderDetailActivity, currentOrder.id)
                     Toast.makeText(
                         this@OrderDetailActivity,
-                        "Order accepted! Starting location tracking.",
+                        "Order accepted! Location tracking started.",
                         Toast.LENGTH_SHORT
                     ).show()
 
@@ -353,9 +504,21 @@ class OrderDetailActivity : AppCompatActivity() {
                     fetchOrderById(currentOrder.id)
                 }
 
+                // Notify customer about driver accepting the order
+                val customerUid = orderDoc.getString("uid")
+                if (customerUid != null) {
+                    NotificationService.sendCustomerOrderUpdate(
+                        this@OrderDetailActivity,
+                        customerUid,
+                        currentOrder.id,
+                        "Order Accepted",
+                        "A driver has accepted your order and is on the way to pickup location"
+                    )
+                }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error accepting order: ${e.message}")
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@OrderDetailActivity,
                         "Error accepting order: ${e.message}",
@@ -377,7 +540,7 @@ class OrderDetailActivity : AppCompatActivity() {
                     .update("status", "In Progress")
                     .await()
 
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@OrderDetailActivity,
                         "Trip started! Navigate to pickup location.",
@@ -387,9 +550,21 @@ class OrderDetailActivity : AppCompatActivity() {
                     // Refresh order details
                     fetchOrderById(currentOrder.id)
                 }
+
+                // Notify customer
+                val customerUid = currentOrder.uid
+                if (customerUid.isNotEmpty()) {
+                    NotificationService.sendCustomerOrderUpdate(
+                        this@OrderDetailActivity,
+                        customerUid,
+                        currentOrder.id,
+                        "Driver En Route",
+                        "The driver is now heading to the pickup location"
+                    )
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting trip: ${e.message}")
-                CoroutineScope(Dispatchers.Main).launch {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@OrderDetailActivity,
                         "Error starting trip: ${e.message}",
@@ -404,117 +579,52 @@ class OrderDetailActivity : AppCompatActivity() {
         val currentOrder = order ?: return
 
         // Check if driver is close enough to pickup location
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Get the latest order data to check if driver can pickup
-                val orderDoc = firestore.collection("orders").document(currentOrder.id)
-                    .get()
-                    .await()
-
-                val driverCanPickup = orderDoc.getBoolean("driverCanPickup") ?: false
-
-                if (!driverCanPickup) {
-                    CoroutineScope(Dispatchers.Main).launch {
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "You must be within 10km of the pickup location",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                    return@launch
-                }
-
-                // Update order status to "Picked Up"
-                firestore.collection("orders").document(currentOrder.id)
-                    .update(
-                        mapOf(
-                            "status" to "Picked Up",
-                            "pickedUpAt" to System.currentTimeMillis()
-                        )
-                    )
-                    .await()
-
-                CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Order marked as picked up! Navigate to delivery location.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // Refresh order details
-                    fetchOrderById(currentOrder.id)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error marking order as picked up: ${e.message}")
-                CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Error marking order as picked up: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
+        if (!currentOrder.driverCanPickup) {
+            Toast.makeText(
+                this,
+                "You must be within 10km of the pickup location",
+                Toast.LENGTH_LONG
+            ).show()
+            return
         }
+
+        // Call the LocationService method to mark the order as picked up
+        LocationService.markOrderPickedUp(this, currentOrder.id)
+
+        Toast.makeText(
+            this,
+            "Order marked as picked up! Now head to delivery location.",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // Refresh the order details
+        fetchOrderById(currentOrder.id)
     }
 
     private fun markOrderAsDelivered() {
         val currentOrder = order ?: return
 
         // Check if driver is close enough to delivery location
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // Get the latest order data to check if driver can deliver
-                val orderDoc = firestore.collection("orders").document(currentOrder.id)
-                    .get()
-                    .await()
-
-                val driverCanDeliver = orderDoc.getBoolean("driverCanDeliver") ?: false
-
-                if (!driverCanDeliver) {
-                    CoroutineScope(Dispatchers.Main).launch {
-                        Toast.makeText(
-                            this@OrderDetailActivity,
-                            "You must be within 10km of the delivery location",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                    return@launch
-                }
-
-                // Update order status to "Delivered"
-                firestore.collection("orders").document(currentOrder.id)
-                    .update(
-                        mapOf(
-                            "status" to "Delivered",
-                            "deliveredAt" to System.currentTimeMillis()
-                        )
-                    )
-                    .await()
-
-                CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Order successfully delivered!",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    // Stop location service
-                    LocationService.stop(this@OrderDetailActivity)
-
-                    // Refresh order details
-                    fetchOrderById(currentOrder.id)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error marking order as delivered: ${e.message}")
-                CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(
-                        this@OrderDetailActivity,
-                        "Error marking order as delivered: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
+        if (!currentOrder.driverCanDeliver) {
+            Toast.makeText(
+                this,
+                "You must be within 10km of the delivery location",
+                Toast.LENGTH_LONG
+            ).show()
+            return
         }
+
+        // Call the LocationService method to mark the order as delivered
+        LocationService.markOrderDelivered(this, currentOrder.id)
+
+        Toast.makeText(
+            this,
+            "Order successfully delivered!",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // Refresh the order details
+        fetchOrderById(currentOrder.id)
     }
 
     private fun cancelDelivery() {
@@ -540,7 +650,7 @@ class OrderDetailActivity : AppCompatActivity() {
                         // Stop location service
                         LocationService.stop(this@OrderDetailActivity)
 
-                        CoroutineScope(Dispatchers.Main).launch {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 this@OrderDetailActivity,
                                 "Delivery cancelled",
@@ -548,9 +658,21 @@ class OrderDetailActivity : AppCompatActivity() {
                             ).show()
                             finish()
                         }
+
+                        // Notify customer
+                        val customerUid = currentOrder.uid
+                        if (customerUid.isNotEmpty()) {
+                            NotificationService.sendCustomerOrderUpdate(
+                                this@OrderDetailActivity,
+                                customerUid,
+                                currentOrder.id,
+                                "Order Cancelled",
+                                "The driver has cancelled your order"
+                            )
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error cancelling delivery: ${e.message}")
-                        CoroutineScope(Dispatchers.Main).launch {
+                        withContext(Dispatchers.Main) {
                             Toast.makeText(
                                 this@OrderDetailActivity,
                                 "Error cancelling delivery: ${e.message}",
@@ -607,8 +729,9 @@ class OrderDetailActivity : AppCompatActivity() {
     private fun enableActionButtons() {
         btnAccept.isEnabled = true
         btnStartTrip.isEnabled = true
-        btnPickedUp.isEnabled = true
-        btnDelivered.isEnabled = true
+        // Don't enable these as they depend on proximity
+        // btnPickedUp.isEnabled = true
+        // btnDelivered.isEnabled = true
         btnCancelDelivery.isEnabled = true
     }
 
@@ -637,28 +760,78 @@ class OrderDetailActivity : AppCompatActivity() {
                         // Update UI
                         displayOrderDetails(updatedOrder)
 
-                        // Check if UI needs updating based on proximity flags
-                        val driverCanPickup = snapshot.getBoolean("driverCanPickup") ?: false
-                        val driverCanDeliver = snapshot.getBoolean("driverCanDeliver") ?: false
-
-                        // Enable/disable buttons based on proximity
-                        if (updatedOrder.status == "In Progress") {
-                            btnPickedUp.isEnabled = driverCanPickup
-                            if (driverCanPickup) {
-                                btnPickedUp.text = "Confirm Pickup (Within Range)"
-                            } else {
-                                btnPickedUp.text = "Pickup (Get Closer)"
-                            }
-                        } else if (updatedOrder.status == "Picked Up") {
-                            btnDelivered.isEnabled = driverCanDeliver
-                            if (driverCanDeliver) {
-                                btnDelivered.text = "Confirm Delivery (Within Range)"
-                            } else {
-                                btnDelivered.text = "Deliver (Get Closer)"
-                            }
-                        }
+                        // Update the map with latest driver location
+                        updateDriverLocation(updatedOrder)
                     }
                 }
             }
+    }
+
+    private fun updateDriverLocation(order: Order) {
+        if (order.driverLocation != null) {
+            val driverPoint = org.osmdroid.util.GeoPoint(
+                order.driverLocation!!.latitude,
+                order.driverLocation!!.longitude
+            )
+
+            // Update existing marker or create a new one
+            if (driverMarker == null) {
+                driverMarker = Marker(mapView)
+                driverMarker?.title = "Driver Location"
+                driverMarker?.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                driverMarker?.icon = ContextCompat.getDrawable(this, R.drawable.ic_driver_location)
+                mapView.overlays.add(driverMarker)
+            }
+
+            // Update marker position
+            driverMarker?.position = driverPoint
+
+            // Update marker rotation based on heading
+            if (order.driverHeading != 0f) {
+                driverMarker?.rotation = order.driverHeading
+            }
+
+            // Update map bounds to include all points
+            val boundsBuilder = org.osmdroid.util.BoundingBox.builder()
+
+            // Include origin and destination points
+            boundsBuilder.include(org.osmdroid.util.GeoPoint(order.originLat, order.originLon))
+            boundsBuilder.include(
+                org.osmdroid.util.GeoPoint(
+                    order.destinationLat,
+                    order.destinationLon
+                )
+            )
+
+            // Include driver location
+            boundsBuilder.include(driverPoint)
+
+            // Apply the bounds
+            mapView.zoomToBoundingBox(boundsBuilder.build().increaseByScale(1.2f), true)
+
+            // Redraw the map
+            mapView.invalidate()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Remove listener to prevent memory leaks
+        orderListener?.remove()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Resume map
+        mapView.onResume()
+
+        // Refresh order data
+        orderId?.let { fetchOrderById(it) }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Pause map
+        mapView.onPause()
     }
 }
