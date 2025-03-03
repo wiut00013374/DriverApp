@@ -17,7 +17,6 @@ import com.example.driverapp.services.NotificationService
 import com.example.myapp.repos.ChatRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.GeoPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -71,6 +70,9 @@ class OrderDetailActivity : AppCompatActivity() {
     // Order listener
     private var orderListener: com.google.firebase.firestore.ListenerRegistration? = null
 
+    // Loading dialog
+    private var loadingDialog: AlertDialog? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_order_detail)
@@ -83,6 +85,9 @@ class OrderDetailActivity : AppCompatActivity() {
 
         // Initialize views
         initializeViews()
+
+        // Initialize loading dialog
+        initializeLoadingDialog()
 
         // Get order from intent
         order = intent.getParcelableExtra("EXTRA_ORDER")
@@ -129,8 +134,23 @@ class OrderDetailActivity : AppCompatActivity() {
         btnContactCustomer = findViewById(R.id.btnDetailContactCustomer)
     }
 
+    private fun initializeLoadingDialog() {
+        loadingDialog = AlertDialog.Builder(this)
+            .setView(layoutInflater.inflate(R.layout.dialog_loading, null))
+            .setCancelable(false)
+            .create()
+    }
+
+    private fun showLoadingDialog() {
+        loadingDialog?.show()
+    }
+
+    private fun hideLoadingDialog() {
+        loadingDialog?.dismiss()
+    }
+
     private fun fetchOrderById(orderId: String) {
-        tvLoadingMessage.visibility = View.VISIBLE
+        showLoadingDialog()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -140,7 +160,7 @@ class OrderDetailActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    tvLoadingMessage.visibility = View.GONE
+                    hideLoadingDialog()
 
                     if (fetchedOrder != null) {
                         order = fetchedOrder
@@ -154,7 +174,7 @@ class OrderDetailActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching order: ${e.message}")
                 withContext(Dispatchers.Main) {
-                    tvLoadingMessage.visibility = View.GONE
+                    hideLoadingDialog()
                     Toast.makeText(this@OrderDetailActivity, "Error loading order: ${e.message}", Toast.LENGTH_SHORT).show()
                     finish()
                 }
@@ -268,7 +288,7 @@ class OrderDetailActivity : AppCompatActivity() {
         mapView.overlays.clear()
 
         // Add origin marker
-        val originPoint = org.osmdroid.util.GeoPoint(order.originLat, order.originLon)
+        val originPoint = GeoPoint(order.originLat, order.originLon)
         val originMarker = Marker(mapView)
         originMarker.position = originPoint
         originMarker.title = "Origin: ${order.originCity}"
@@ -277,7 +297,7 @@ class OrderDetailActivity : AppCompatActivity() {
         mapView.overlays.add(originMarker)
 
         // Add destination marker
-        val destPoint = org.osmdroid.util.GeoPoint(order.destinationLat, order.destinationLon)
+        val destPoint = GeoPoint(order.destinationLat, order.destinationLon)
         val destMarker = Marker(mapView)
         destMarker.position = destPoint
         destMarker.title = "Destination: ${order.destinationCity}"
@@ -295,7 +315,7 @@ class OrderDetailActivity : AppCompatActivity() {
 
         // Add driver location marker if available
         if (order.driverLocation != null) {
-            val driverPoint = org.osmdroid.util.GeoPoint(
+            val driverPoint = GeoPoint(
                 order.driverLocation!!.latitude,
                 order.driverLocation!!.longitude
             )
@@ -321,7 +341,7 @@ class OrderDetailActivity : AppCompatActivity() {
         // Include driver location in bounds if available
         if (order.driverLocation != null) {
             boundsBuilder.include(
-                org.osmdroid.util.GeoPoint(
+                GeoPoint(
                     order.driverLocation!!.latitude,
                     order.driverLocation!!.longitude
                 )
@@ -697,15 +717,11 @@ class OrderDetailActivity : AppCompatActivity() {
         }
 
         // Show loading indicator
-        val loadingDialog = AlertDialog.Builder(this)
-            .setView(layoutInflater.inflate(R.layout.dialog_loading, null))
-            .setCancelable(false)
-            .create()
-        loadingDialog.show()
+        showLoadingDialog()
 
         // Create or get existing chat
         ChatRepository.createOrGetChat(currentOrder.id, currentUserId, customerUid) { chatId ->
-            loadingDialog.dismiss()
+            hideLoadingDialog()
 
             if (chatId != null) {
                 // Open chat activity
@@ -769,7 +785,7 @@ class OrderDetailActivity : AppCompatActivity() {
 
     private fun updateDriverLocation(order: Order) {
         if (order.driverLocation != null) {
-            val driverPoint = org.osmdroid.util.GeoPoint(
+            val driverPoint = GeoPoint(
                 order.driverLocation!!.latitude,
                 order.driverLocation!!.longitude
             )
@@ -795,9 +811,14 @@ class OrderDetailActivity : AppCompatActivity() {
             val boundsBuilder = org.osmdroid.util.BoundingBox.builder()
 
             // Include origin and destination points
-            boundsBuilder.include(org.osmdroid.util.GeoPoint(order.originLat, order.originLon))
             boundsBuilder.include(
-                org.osmdroid.util.GeoPoint(
+                GeoPoint(
+                    order.originLat,
+                    order.originLon
+                )
+            )
+            boundsBuilder.include(
+                GeoPoint(
                     order.destinationLat,
                     order.destinationLon
                 )
@@ -818,6 +839,8 @@ class OrderDetailActivity : AppCompatActivity() {
         super.onDestroy()
         // Remove listener to prevent memory leaks
         orderListener?.remove()
+        // Clean up loading dialog
+        loadingDialog?.dismiss()
     }
 
     override fun onResume() {
